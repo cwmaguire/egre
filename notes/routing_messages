@@ -1,0 +1,13 @@
+Routing Messages
+
+June 19, 2015
+
+handle_attempt call out to Type module merge self() with the done
+procs merge any connected procs with the still-to-be-notified procs
+If there are no still-to-be-notified procs then tell everyone that we
+succeeded else pass “attempt” on to the next proc with the
+updated lists of who is done, who is not, and what the room is
+
+So long as you pass back a resend no proc will get a succeed message
+and no proc will ever care that the original message died and will
+never be heard from again.

@@ -1,0 +1,9 @@
+Make Things
+
+June 19, 2015
+
+So far I just told erlmud_object_sup to fire up a new child with an empty property list  and the type I wanted, name 'attack'
+
+June 18, 2015
+
+Just a note that I'm going to need to spawn new processes.

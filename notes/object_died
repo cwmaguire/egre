@@ -1,0 +1,14 @@
+Object Died
+
+Jan 27, 2016
+
+If we restart the process with the same ID then other processes can be notified of the new PID for that ID and reconnect to it.
+We either need a central or distributed ID-&gt;PID registry. We already have a name-&gt;PID registry, I think.
+
+Oct 4, 2015
+
+An object dies.
+If we simply restart an object it won’t know what kind of object it is.
+We could backup the object’s properties: - ETS - DETS - In other objects - In a backup companion object
+I need to come up with some other options: - the object could just disappear - child objects would disappear or be orphaned - use the name of the process ... - will not have a name - each object could be a queue of processes ready to step in - The supervisor could back up all the properties - unless we had a bunch of supervisors this wouldn’t be a good idea - re-read the starting state - e.g. the object would go back to it’s starting room and have it’s starting properties - constantly spin off back-up processes and the recover them - Write properties to file This would actually be kind of cool: recreate a file structure to match the ownership hierarchy
+Why do I care? Well, because one process dying (e.g. a room, bag, monster, etc) should cripple the entire mud.

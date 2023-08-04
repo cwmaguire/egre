@@ -1,0 +1,50 @@
+Protocol is too hard to follow
+
+February 9, 2022
+
+I've written a parse_transform (gerlshmud_protocol_parse_transform)
+to pull out a lot of the events from attempt, succeed and
+gerlshmud_object:attempt/2.
+
+January 28, 2022
+
+Owner   | Matches  | When | Module | Type---------_Owner,              | Self, Action, Item  | Self == self andalso is_pid(Item) andalso Action == get; Action == drop   | chat_inv      | attempt#parents{character = Character} | Attacker, calc, HitRoll     |                                       | defend       | attemptI might want to put "Matches" before "Owner" because "Matches" really says what the _message_ is about, not the process receiving the message
+Matches | Owner    | When | Module | Type--------- Self, Action, Item  | _Owner,             | Self == self andalso is_pid(Item) andalso Action == get; Action == drop   | chat_inv      | attempt Attacker, calc, HitRoll     | #parents{character = Character} |                                       | defend       | attemptActually, it would be good to have the "When" next to the "Matches"Matches              | When                                    | Owner              | Module       | Type---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- Self, Action, Item        | Self == self andalso is_pid(Item) andalso Action == get; Action == drop   | _Owner,             | chat_inv      | attempt Attacker, calc, HitRoll     |                                       | #parents{character = Character} | defend       | attempt
+
+October 20, 2020
+
+I did some more work on the extraction script so it pulls out success
+function clauses, attempt function clauses, Message = {...} and
+NewMessage = {...}. I think I need to add "Event = {...}"
+
+May 5, 2020
+
+I could use a message ID and then auto-populate the code with the
+message details that are commented out. I don’t really like that
+though because then the code relies on outside help. I’d rather
+the code was expressive in it’s pure form and then extract out the
+protocol from the code. I think I tried annotating the code at some
+point, but then I’m relying on myself to annotate the code
+properly. Better just to make the protocol extraction script very
+smart.
+
+January 4, 2019
+
+I created a script to find all the attempt and succeed calls in the handlers and list them in a file. This may be enough for now to debug when things are going wrong.
+If I gave up the expressiveness of the tuples with atoms and just used a message ID it would be much easier to debug, but much harder to read. I’d always have to be flipping back and forth between the handler and the index to figure out what messages are being handled where.
+I should add “NewMessage” to the script so I can see where an existing message is converted to a new message.
+If I monitored my tests I could capture what messages are sent. I have it in the logs but I could clean it up and just capture the protocol. This would rely on every message being tested though. That would just tell me my tests worked. I need to see what’s going on when my tests _don’t_ work.
+
+January 3, 2019
+
+I’m not sure that animation is the answer. I think extracting the protocol from the code would be sufficient. A parse transform might be the right tool to catalogue all of the attempt, succeed and fail calls that the handlers do. This would give me an easy way to see what messages are in the protocol and what handlers generate and respond to them.
+An animation would show what actually happened, i.e. what was wired up correctly. I want to see all of the wiring to figure out what was _intended_ even if it isn’t wired correctly.
+It wouldn’t hurt to animate it, so I might do that too, but I should catalogue the protocol first.
+Brevan, Justin and I had some interesting ideas at Geek Night: - use a graph database and query for the messages - give each message a key - maybe a hash? - use heuristics to see what objects aren’t responding to events Also, Brevan pointed out that my messages are a small language.
+
+November 15, 2018
+
+I should create a 2D game where I can play live and play back a recorded session from a log file.
+July 24, 2017
+It's too hard to follow all these events all over the place. They get modified and resent and it's hard to link the resent message to the handler expecting that resent message.
+I'm thinking maybe I should write a tool to trace out all the paths: - show where messages are created and consumed - check for messages that don't have either a creator or a consumer, i.e. I've broken the chain of logic somewhere

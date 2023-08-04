@@ -1,0 +1,58 @@
+Testing /w Connection
+
+March 29, 2016
+
+I’ve successfully split the connection with the connection object
+in the graph. The connection handles login state and communication to
+and from the socket. The connection object is the proxy for the
+connection to participate in the graph: introduce events, listen for
+success and failure, etc. This allows the connection to do the FSM
+thing and the connection object to do the gen_server thing. The only
+gotcha is that the connection has to pretend to be a gen_server to
+participate in logging because erlmud_event_log calls “props” on
+anything trying to log. The connection catches the gen.erl call
+{‘$gen_all’, {From, Ref}, Message} and responds with {Ref, []}
+(i.e. “No props”). This should get fixed.
+
+March 27, 2016
+
+Do not have the connection make the attempt because it’s not part
+of the graph. Instead, I need an out-of-band way to inject a message
+into the graph. … and I already had one! Just send an {attempt,
+…} message into any erlmud_object and it will call
+attempt({attempt, ..})
+
+March 26, 2016
+
+Connection and connection object are split.
+I’m thinking the connection will just send {move, Player,
+undefined, Room} so that the entire world is notified that the player
+has joined.
+I could have a holding room or a storage room where all players are
+until they join a/the world. Basically they’re always in the
+“overworld” or “underworld" or matrix construct until they
+“jack into” a world. This would allow the MUD to handle any
+commands through a regular graph of objects: character modification
+object, account management object, accounting object, etc.
+For now I think they’ll just join from nowhere.
+
+March 12, 2016
+
+There’s no state change to check when a message is sent to a Player
+-> Connection -> Socket, so there’s no way to check if the
+message succeeded. If we connect a test socket and make the
+connection an erlmud_object then the connection can watch for
+“send” events, subscribe to them and then send them to the
+socket. The socket can simply store them and then we can check after
+a while and make sure the message came through.
+The connection is now both an FSM (for login <-> password ->
+live -> dead) _and_ an object for subscribing to send events.
+I’m thinking I should split this up so that the connection FSM has
+a connection object. socket - conn fsm - conn obj - player
+The conn obj. could connect the player to the graph.
+erlmud_object takes:
+
+February 24, 2016
+
+I don’t exactly remember why I needed a test connection. I’m tired.
+However, I’ve created erlmud_test_conn to match erlmud_websocket. They both

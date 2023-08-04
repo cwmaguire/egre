@@ -1,0 +1,37 @@
+Name
+
+┏━━━━━━━━━━━━━━━━┓
+┃   2023-08-04   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+Finally decided on EDRE: Erlang Graph Rules Engine
+
+Also broke off the MUD engine as EGRE_MUD and the reference MUD built using that engine as EGRE_MUD_1.
+
+┏━━━━━━━━━━━━━━━━┓
+┃   2020-12-21   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+"Graph of Erlang Stream Handlers" -> GerlSHMUD
+
+... however, these aren't really "stream" handlers, just event handlers. I mean, there is a stream of events, but, it's not like an audio stream, a video stream, etc. There's nothing being "streamed", just events being generated and manipulated.
+
+Graph of Erlang Event Handlers -> GErlEHMUD ... doesn't have the same ring. Erlang MUD Event Handlers Graph -> EMUDEHG
+
+E,
+ErlMUD
+EHG
+GHE
+EMUD
+EGHEMUD
+ErlGHEMUD
+HErlGEMUD
+HandlerGraphMUD
+
+Whatever, GErlSHMUD works for now
+
+July 2, 2017
+
+I need a new name for erlmud since another guy has “erlmud” already.
+“Graph MUD”?
+Terry and Michael had some good ideas but I lost the Slack history.

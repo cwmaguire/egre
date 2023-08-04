@@ -1,0 +1,22 @@
+Keep Passing on Failed Messages
+
+July 9, 2016
+
+Broadcasting messages only to children relies on messages stopping when they are failed.
+
+July 1, 2016
+
+My logic here was that if something needs to react to an event then
+we need to keep passing on the attempts even after one handler fails
+the attempt.
+
+Wrong. If the attempt doesn’t succeed then _nothing_ happened. For example. If I attempt to open the door, but the door is locked then … I attempted to open the door. Crap. If I _try_ and open a door I should have logic on that. 
+
+“You hear someone try to open the door."
+
+“You try to open the door and are shocked with n volts of electricity."
+
+So, I’ll need to register the attempt without passing it. I’ll
+probably do this by kicking of an ‘x_attempt’ message so that
+other processes can react to the attempt even though the attempt
+itself failed. 

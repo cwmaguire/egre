@@ -1,0 +1,42 @@
+Cleaning up attempt function clauses
+
+June 30, 2016
+
+Done! Tests are all passing.
+In answer to my June 12, 2016 question: two different swords would be two different processes. Things would get confusing if the same process both failed and succeeded an event. I'd have to think up an example where one event required two handlers to handle the same event instead of one handler handling the event and then resending it as something else if more information is required.
+
+June 12, 2016
+
+Why can’t more than one handler for an object handle the same event?
+What if I have two glowing swords? Shouldn’t they both increase light? (Reference to Drizzt Do’urden)
+
+May 30, 2016
+
+Event handling spreads over capability and interest (allow and subscribe to attempt) and result (success or failure message). Having three separate handlers for each of these parts of an event will make it very hard to reason about how an event is handled. So instead I'm rolling events into a general handler that does attempt, success and failure. 
+Examples: character look/describe handler, character inventory handler (get, drop), etc.
+Each object will have a ‘handlers’ property. Every time an attempt, success or failure needs to be handled the list of handlers will be fed the event. Each handler will have the following functions: attempt, succeed, fail. So, it’s just ripping the logic out of the object modules and putting the related logic into it’s own handler. That’s what the objects were anyway: a bunch of handler code separated out with pattern matching function clauses resembling a large case statement. Objects now are just a list of properties and a list of logic handlers. Since objects will differ mostly in how they handle specific events (i.e. different doors will handle opening events slightly differently) then only the handler for that logic needs to change. Most characters, for example, will have the same movement and inventory code (most likely). Any individual object can easily have a specific behaviour (handler) swapped out for another.
+Maybe I should call them behaviours? That might get confusing with Erlang behaviours though. Also, behaviours … well, they sound like AI, but that’s what they’ll be in some cases.
+It’s a lot of work to switch over.
+
+May 26, 2016
+
+Of course at this point the temptation would be to write a DSL to run the list of actions for me, but I’m going to avoid that temptation as it makes it even harder to figure out what is going on.
+
+May 20, 2016
+
+My attempt clauses are very hard to untangle.
+attempt(Some, Vars) when Something == SomethingElse -> case Maybe of ReAttempt -> send new attempt; Stop -> stop Etc. end;
+Enough of those ^ and it starts to get hard to read.
+Maybe:
+- break up clauses into function calls:
+attempt(AnythingToDoWithLooking) -> look(...); attempt(AnythingToDoWithAttacking) -> attack(...); attempt(AnythingToDoWithMovement) -> move(...).
+This would allow me to show very quickly what a function clause was involved in
+- Pipe the attempt through successive functions
+attempt(Foo) -> ignore(attack(look(get(move(Foo))));
+Each function would have a final ignore clause that would pass on the arguments untouched. If the function did handle that clause then it could return 'handled' to the rest of the functions.
+Then I could just have a list of "action functions" that handle events and just run the event through all of them.
+F = <function runner>, lists:foldl(F, Acc, ActionFunctions).
+ActionFunctions could even be a macro
+lists:fold(F, Acc, ?ACTIONS)
+Those actions could come from other modules too: -define(ACTIONS, [fun erlmud_attack_dog_1/2])
+Even better, the actions could be configurable so that you can change them.

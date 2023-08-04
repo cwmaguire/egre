@@ -1,0 +1,35 @@
+Message Limits
+
+Jan 29, 2016
+
+tl;dr - track searched objects in message
+I still want to have message limits but I'm going to track object hierarchies when doing a search.
+Every searched object that is ... subscribed? ... will report it's description.
+No. Maybe I do need paths. How do I know which objects to output?
+Ah, the message. Do subscribed objects get the message? Yes.
+
+Sept 27, 2015
+
+I need to limit how far a message can go.
+Currently there’s a 1 room limit, but that’s arbitrary.
+Now I need to have a search go down the item hierarchy of a character, but not outside the character:
+Wizard Pocket1 Pouch Pocket2 Small box Envelope Bag
+So I’m thinking I can set a “gate” object.
+However, a room gate object allows going to adjacent rooms.
+Maybe a gate operator?
+“connected to" “within"
+Then _every_ message needs a gate operator, … unless I make “within 1 room" the default
+What would a “within two rooms” marker look like?
+{within, 1, room, [Room1, {Room1, Room2}]}
+I’d have to check if the current room was connected to the current exit, or if one of the paths was.
+I _think_ I need to store the path, otherwise how could I tell if I’d reached the limit on number of rooms.
+Oh, store the number.
+But then how do I know if I’ve been down that path yet?
+i.e. I might go back and forth or hit the same room from multiple paths.
+“Is my room on the end of any path that is shorter than the max path length?"
+e.g. max path length is 3, I’m connected to [Room1, Room2], so I’m valid.
+e.g. max path length is 1, I’m connected to [Room1], so I’m not valid.
+“Am I within object A?"
+e.g. path {A, B, C} exists and my parent is C, so I’m valid.
+e.g. path {A, B, C} exists and my parent is D, so I'm invalid.
+path_to within
