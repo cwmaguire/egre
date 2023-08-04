@@ -51,3 +51,12 @@ A triggers on "Do <pid>" and takes some action.
 
 So one rule process added information to an event and resent it,
 thereby triggering a another rule process that initially ignored it.
+
+Benefits:
+
+1) The objects don't need to be on the same machine.
+
+2) Every object could potentially be handling a different message at the same time.
+
+3) No event is ever modified by two processes at once. No process needs to acquire
+any locks which means no deadlocks and no race conditions.
