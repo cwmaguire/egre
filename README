@@ -1,46 +1,21 @@
-G.Erl.S.H.M.U.D - Graph of ERLang Stream Handlers Multi-User Dungeon
+EGRE - Erlang Graph Rules Engine
 
-(Actually, it's more like a distributed rules engine than stream handlers)
+EGRE has been split off from GERLSHMUD; GERLSHMUD is a MUD built in
+Erlang with a graph rules engine. EGRE is that rules engine.
 
-How it Works (short version):
-All MUD elements (rooms, characters, attributes, weapons, spells) are
-processes.
-Processes live in a graph.
-Events propagate through the graph.
-Events succeed or fail.
-Events can be: generated, resent, failed, passed, subscribed to.
-
-Since every MUD element hears every local event and can modify it all kinds
-of logic becomes possible:
-- a door can unlock based on a broach that a character is wearing
-- time of day can boost chances to cast a spell
-- weather can change the rate at which resources like stamina accrue
-- A pair of magic boots could prevent a character from dying
-- A jungle area can have a miasma that limits a players focus
-The beauty of this is that anything can "man-in-the-middle" any event
-without any of the original participants needing to know about it. Every
-event initiator simply fires the event out into the world and sees what,
-if anything, comes back.
-
-Video on how it works:
-https://www.youtube.com/watch?v=dcuv_M4Po0g
-
-How it Works in Detail:
-
-GERLSHMUD is a graph of asynchronous processes representing every aspect
-of a game world: rooms, spells, attributes, attacks, players, etc. Events
-in the MUD flow through the graph and touch one process at a time.
+EGRE is a graph of asynchronous processes handling events.
+Events flow through the graph and touch one process at a time.
 Each process takes in events, modifies it's internal state and either
 passes on the event or triggers one or more new events.
 
-Any event in the MUD is first proposed as an attempt. Attempts are passed
+Any event is first proposed as an attempt. Attempts are passed
 from process to process through the graph.  Each process can either fail the
 attempt with a reason or allow the attempt to succeed. Each process can also
 subscribe to the event to be notified of the result. Processes can also resend
 a different attempt in place of an original or pass on a modified copy of the
 original.
 
-Events in the MUD flow through the process graph without locking up the world.
+Events flow through the graph without locking up other processes.
 Each process that handles the event will handle it independently of all other
 processes. A process always has the only copy of the event and no locks are
 needed. No process will halt processing to communicate with another process.
@@ -54,150 +29,25 @@ listens for particluar events and so processes that cooperate to resolve
 an event will need to agree on a protocol to communicate via the process
 graph.
 
-Example:
-
-A player types "go north".
-
-We're immediately missing information:
-Who's going north?
-Where are they now?
-What is north from there?
-Can that character move north?
-Is there a north?
-Is there free travel to the north?
-
-Eventually every process within reach will see this message.
-
-The player's character process, C, knows that it is "in" room R1. Character C
-resends the message as "C move north from R1".
-
-The current message is abandoned. There is now a new message.
-
-An exit process, E, which knows about room R1 also knows that room R1 connects
-to room R2 to the north. E drops "north" since it's redundant and resends
-"P move from R1 to R2".
-
-The current message is abandoned. There is now a new message.
-
-Exit E or room R2 might see the message "go north" and ignore it before C updates
-the message. The "graph traversal" must restart after the message is updated by
-C to make sure that every process sees the most recent message. Once the new
-message arrives with "P move north from R1" then Exit E will recognize it.
-
-This goes on until the event has all the questions about it answered and either
-the message is deemed a success or the message is deemed a failure.
-
-If the door to the north is locked then exit E might fail the message with
-"The door to the north is locked."
-
-The rooms, R1 and R2 will subscribe to the message because each will need to update
-their properties: R1 will remove C and R2 will add C.
-
-Why go to all this trouble to have a single object handle a single event at
-a time? Concurrency and parallelism. If an object can handle a message atomically
-then we get several benefits:
-
-a) The objects don't need to be on the same machine. A character can live on
-machine A while a room is on machine B. Erlang makes it a cinch to send the
-messages to different machines.
-
-b) Every object could potentially be handling a different message at the same time.
-Rather than lock up hundreds of processes to reconcile a battle between multiple
-characters many events can be happening at the same time.
-
-c) No event is ever modified by two processes at once. No process needs to acquire
-any locks which means no deadlocks and no race conditions.
-
-There are downsides though: we have no "transactions" to make sure that information
-is still valid by the time it is acted upon. A player might decide to go north
-while a door is unlocked but by the time they actually move the door is locked.
+There are no "transactions" to make sure that information
+is still valid by the time it is acted upon.
 In a banking environment this would be a catastrophe but in a MUD this is
-survivable. For one, events won't take long to complete. For another, the world
-won't end if a player manages to slip through a door milliseconds after the door
-is locked. Maybe one day there will be a Games Done Quick feature where this is
-abused. I hope so.
+survivable.
 
-Finally, this is all experimental. If it fails, oh well. :)
+To program with a graph of rule processes, processes must communicate purely
+with events: if rule process A needs information, it sends out an event
+that requests information. Rule processes can send and receive mutliple
+different events that iteratively build up into a complete event that has
+all the required information.
 
-See https://github.com/zxq9/erlmud for a potentially more successful MUD
-in Erlang by someone who actually knows what they're talking about.
+For example:
 
+We have rule process A and B.
+A gets an event attempt with "Do 'X'" and ignores it.
+B gets the event.
+B is triggered on "Do 'X'".
+B knows that 'X' should be replaced with a pid and sends a new event "Do <pid>".
+A triggers on "Do <pid>" and takes some action.
 
-Some older videos that explain GERLSHMUD:
-
-Jun 20, 2015 - How attacks work: https://youtu.be/oSG1EXPMJVw
-Jun 20, 2015 - How messages work: https://youtu.be/6t7YSnSBaJ8
-
-Project Updates:
-
-Jan 27, 2015 - propagated first succeed message back to a subscribers
-Jan 29, 2015 - move player between two rooms via an exit
-Jan 31, 2015 - move player between two rooms with a direction
-Feb 20, 2015 - web interface and login process
-Apr 23, 2015 - can look at a character
-Jun 20, 2015 - attacks, logging
-Jun 24, 2015 - wielding/wearing items on body parts
-Jun 26, 2015 - remove items from body, body part compatibility
-Jun 28, 2015 - add item to first available body part
-Sep 26, 2015 - life, hp and behaviour processes, counterattacks
-Sep 29, 2016 - HTML+CSS logging with filters
-Mar 28, 2016 - connection process with graph proxy
-Apr 27, 2016 - re-did looking and descriptions
-Jun 29, 2016 - moved object type-specific code to event handler modules
-Jun 29, 2016 - ping items asynchronously for valid body parts
-Jul  3, 2016 - add broadcast message (send multiple messages at once)
-Jul  9, 2016 - attributes and items can modify attack hits and damage
-Jun 15, 2017 - uses resources to handle simultaneous attacks
-Feb  1, 2019 - logs are now JSON, added new logging web page
-Feb 11, 2019 - implemented spells and effects
-Oct 20, 2020 - protocol cataloguing, v1
-Aug 29, 2021 - implement attack effects
-Aug  7, 2022 - protocol cataloguing, v2, now with parse transform
-Aug 24, 2022 - corpse cleanup
-
-How to run the tests: (Which is all I've been doing lately)
-
-./t
-
-or with a test case:
-
-./t look_player
-
-How to run it:
-
-make && make rel && _rel/erlmud_release/bin/erlmud_release console
-> erlmud_world:init(). %% Loads the world
-> erlmud_world:m(s).   %% Move player1 south
-> erlmud_world:s().    %% Get the pid and state of all the objects
-> erlmud_world:t().    %% Trace erlmud_object and erlmud_exit
-> open http://localhost:8080/websocket.html in a browser
-> in the browser enter any text for the login
-> in the browser enter any text for the password
-> start typing commands (e.g. "n", "look", "look pete")
-
-Videos in which I give explanations for commits:
-
-Why commit comment videos: https://www.youtube.com/watch?v=oHRU1Y8mlJ4
-
-Commit SHA - Video Link
----------- - -------------------------------------------
-F7189F17   - https://www.youtube.com/watch?v=GBPLuBVrRLU
-B85C17EA   - https://www.youtube.com/watch?v=e4KM6ZsjpHY
-B2DD547D   - https://www.youtube.com/watch?v=FDSkNMZH4F8
-B0E8CF51   - https://www.youtube.com/watch?v=yBXYhUln3LY
-B0D1674F   - https://www.youtube.com/watch?v=66uW0ZKnN9M
-61004150   - https://www.youtube.com/watch?v=1ssN0qco6cA
-467370DD   - https://www.youtube.com/watch?v=0mqmXECU_AE
-49228CCA   - https://www.youtube.com/watch?v=ku80MOJa4VY
-885DD677   - https://www.youtube.com/watch?v=hq3jnJVtcHY
-69D41114   - https://www.youtube.com/watch?v=d2dropirT-w
-6F744FCC   - https://www.youtube.com/watch?v=oYasq4W2ZdQ
-4FF59B65   - https://www.youtube.com/watch?v=_AhT2kaBrGc
-3F73000B   - https://www.youtube.com/watch?v=jQwwuLxEjIQ
-47CE465    - https://www.youtube.com/watch?v=5yVLVowxRQo
-C2BF293    - https://www.youtube.com/watch?v=grHQbw7-DD4
-97C5488    - https://www.youtube.com/watch?v=n1LRljIkwf0
-2D192CB    - https://www.youtube.com/watch?v=tGVhkcYV7R0
-C3F1277    - https://www.youtube.com/watch?v=ZGG4Rzqn6Xs
-B386D19    - https://www.youtube.com/watch?v=aj5dEI3y8d8
-EE46AC2    - https://www.youtube.com/watch?v=al-6BG8U0MA
+So one rule process added information to an event and resent it,
+thereby triggering a another rule process that initially ignored it.
