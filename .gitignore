@@ -6,3 +6,4 @@ ebin
 relx*
 logs
 .erlang.mk
+egre.d
