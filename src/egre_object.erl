@@ -2,7 +2,7 @@
 -module(egre_object).
 -behaviour(gen_server).
 
--include("include/egre.hrl").
+-include("egre.hrl").
 -include_lib("kernel/include/logger.hrl").
 
 %% API.

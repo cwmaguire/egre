@@ -3,7 +3,7 @@
 
 -behaviour(gen_server).
 
--include("include/egre.hrl").
+-include("egre.hrl").
 
 -export([start_link/0]).
 -export([log/2]).
