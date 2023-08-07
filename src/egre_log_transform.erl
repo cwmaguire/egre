@@ -1,5 +1,5 @@
 %% Copyright 2022, Chris Maguire <cwmaguire@protonmail.com>
--module(gerlshmud_log_transform).
+-module(egre_log_transform).
 
 -export([parse_transform/2]).
 

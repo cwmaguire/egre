@@ -1,5 +1,5 @@
 %% Copyright 2022, Chris Maguire <cwmaguire@protonmail.com>
--module(gerlshmud_protocol_parse_transform).
+-module(egre_protocol_parse_transform).
 
 -export([parse_transform/2]).
 
@@ -22,7 +22,7 @@ parse_transform(Forms, _Options) ->
     Forms.
 
 module([{attribute, _Line, module, Module} | _]) ->
-    remove_prefix(<<"gerlshmud_handler_">>, a2b(Module));
+    remove_prefix(<<"egre_handler_">>, a2b(Module));
 module([_ | Forms]) ->
     module(Forms);
 module(_) ->
@@ -62,7 +62,7 @@ clause({clause, _Line, Head, GuardGroups, Body}, State) ->
 
 clause(_Name, {clause, _Line, _Head, _GuardGroups, Body}, State) ->
     % Don't look at function arguments and guards that aren't attempt or succeed
-    % but do look for any calls to gerlshmud_object:attempt/2 calls
+    % but do look for any calls to egre_object:attempt/2 calls
    loop_with_state(Body, fun search/2, State).
 
 %% We don't need to see catch-all clauses in the protocol
@@ -207,9 +207,9 @@ succeed_head(Props, Event, State) ->
 case_clause({clause, _Line, [Head], _GuardGroups, Body}, State) ->
      {HeadExprs, State1} = search(Head, State),
 
-     % I don't think we can call gerlshmud_object:attempt/2 in a guard clause
+     % I don't think we can call egre_object:attempt/2 in a guard clause
      % and the only reason to descend below function heads is to look for calls
-     % to gerlshmud_object:attempt/2.
+     % to egre_object:attempt/2.
      %case GuardGroups of
      %    [] ->
      %        [];
@@ -260,7 +260,7 @@ search({'fun',_Line,Body}, State) ->
 %search({call,_Line,Fun,Args}) ->
 search({call, _Line,
       {remote, _RemLine,
-       {atom, _AtomLine, gerlshmud_object},
+       {atom, _AtomLine, egre_object},
        {atom, _FunAtomLine, attempt}},
       [Arg1, Arg2]},
      State) ->
@@ -272,7 +272,7 @@ search({call, _Line,
 
 search({call, _Line,
       {remote, _RemLine,
-       {atom, _AtomLine, gerlshmud_object},
+       {atom, _AtomLine, egre_object},
        {atom, _FunAtomLine, attempt_after}},
       [_, Arg2, Arg3]}, State) ->
     NoProps = <<"|">>,

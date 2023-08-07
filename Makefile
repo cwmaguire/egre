@@ -1,5 +1,5 @@
 PROJECT = egre
-COMPILE_FIRST = gerlshmud_object gerlshmud_handler
+COMPILE_FIRST = egre_object egre_handler
 
 ## copied from erlang.mk and added +native.
 ## It made one of the test faster when this was part of GERLSHMUD

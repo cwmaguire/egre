@@ -1,5 +1,5 @@
 %% Copyright 2022, Chris Maguire <cwmaguire@protonmail.com>
--module(gerlshmud_hierarchy).
+-module(egre_hierarchy).
 
 -export([new/1]).
 -export([insert/2]).

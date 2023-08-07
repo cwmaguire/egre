@@ -1,8 +1,8 @@
 %% Copyright 2022, Chris Maguire <cwmaguire@protonmail.com>
--module(gerlshmud_app).
+-module(egre_app).
 -behaviour(application).
 
--include("include/gerlshmud.hrl").
+-include("include/egre.hrl").
 
 -export([start/2]).
 -export([stop/1]).
@@ -12,22 +12,22 @@
 
 start(_Type, _Args) ->
     setup_and_or_start_mnesia(),
-    Port = case application:get_env(gerlshmud, port) of
+    Port = case application:get_env(egre, port) of
                {ok, EnvPort} ->
                    EnvPort;
                _ ->
                    8080
            end,
 
-    Paths = [{"/", gerlshmud_websocket, ?NO_OPTIONS},
-             {"/log", gerlshmud_websocket_log, ?NO_OPTIONS},
-             {"/[...]", cowboy_static, {priv_dir, gerlshmud, "static"}}],
+    Paths = [{"/", egre_websocket, ?NO_OPTIONS},
+             {"/log", egre_websocket_log, ?NO_OPTIONS},
+             {"/[...]", cowboy_static, {priv_dir, egre, "static"}}],
     Routes = [{?ANY_HOST, Paths}],
     Dispatch = cowboy_router:compile(Routes),
-    _ = cowboy:start_clear(gerlshmud_http_listener,
+    _ = cowboy:start_clear(egre_http_listener,
                            [{port, Port}],
                            #{env => #{dispatch => Dispatch}}),
-    gerlshmud_sup:start_link().
+    egre_sup:start_link().
 
 stop(_State) ->
 	ok.

@@ -1,9 +1,9 @@
 %% Copyright 2022, Chris Maguire <cwmaguire@protonmail.com>
--module(gerlshmud_index).
+-module(egre_index).
 
 -behaviour(gen_server).
 
--include("include/gerlshmud.hrl").
+-include("include/egre.hrl").
 
 -export([start_link/0]).
 -export([put/1]).

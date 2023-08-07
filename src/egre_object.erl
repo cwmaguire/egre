@@ -1,8 +1,8 @@
 %% Copyright 2022, Chris Maguire <cwmaguire@protonmail.com>
--module(gerlshmud_object).
+-module(egre_object).
 -behaviour(gen_server).
 
--include("include/gerlshmud.hrl").
+-include("include/egre.hrl").
 -include_lib("kernel/include/logger.hrl").
 
 %% API.
@@ -45,10 +45,10 @@ start_link(MaybeId, OriginalProps) ->
     Id = id(MaybeId),
 
     Props =
-        case gerlshmud_index:get(Id) of
+        case egre_index:get(Id) of
             undefined ->
                 Props_ = [{id, Id} | OriginalProps],
-                gerlshmud_index:put(Props_),
+                egre_index:put(Props_),
                 Props_;
             #object{properties = StoredProps} ->
                 StoredProps
@@ -58,11 +58,11 @@ start_link(MaybeId, OriginalProps) ->
 
     case proplists:get_value(pid, Props) of
         OldPid when is_pid(OldPid), OldPid /= Pid ->
-            gerlshmud_index:replace_dead(OldPid, Pid);
+            egre_index:replace_dead(OldPid, Pid);
         _ ->
             ok
     end,
-    gerlshmud_index:update_pid(Id, Pid),
+    egre_index:update_pid(Id, Pid),
     {ok, Pid}.
 
 id(_Id = undefined) ->
@@ -140,7 +140,7 @@ handle_cast_({populate, ProcIds}, State = #state{props = Props}) ->
          {?EVENT, populate},
          {source, self()} |
          Props]),
-    gerlshmud_index:put(Props),
+    egre_index:put(Props),
     {noreply, State#state{props = populate_(Props, ProcIds)}};
 handle_cast_({set, Prop = {K, _}}, State = #state{props = Props}) ->
     {noreply, State#state{props = lists:keystore(K, 1, Props, Prop)}};
@@ -151,7 +151,7 @@ handle_cast_({attempt, Msg, Procs}, State = #state{props = Props}) ->
         Stop = {stop, _, _} ->
             Stop;
         Continue = {noreply, #state{props = Props2}} ->
-            gerlshmud_index:put(Props2),
+            egre_index:put(Props2),
             Continue
     end;
 handle_cast_({fail, Reason, Msg}, State) ->
@@ -159,14 +159,14 @@ handle_cast_({fail, Reason, Msg}, State) ->
     case fail(Reason, Msg, State) of
         {stop, Props, LogProps} ->
             {_, ParentsList} = parents(Props),
-            gerlshmud_index:put(Props),
+            egre_index:put(Props),
             log([{stage, fail_stop},
                  {object, self()},
                  {owner, proplists:get_value(owner, Props)},
                  {message, Msg},
                  {stop_reason, Reason} |
                  Props ++ ParentsList ++ LogProps]),
-            gerlshmud_index:put(Props),
+            egre_index:put(Props),
             % FIXME I think this will just cause the supervisor to restart it
             % Probably need to tell the supervisor to kill us
             {stop, {shutdown, Reason}, State#state{props = Props}};
@@ -177,7 +177,7 @@ handle_cast_({fail, Reason, Msg}, State) ->
                  {message, Msg},
                  {stop_reason, Reason} |
                  Props ++ ParentsList ++ LogProps]),
-            gerlshmud_index:put(Props),
+            egre_index:put(Props),
             {noreply, State#state{props = Props}}
     end;
 handle_cast_({succeed, Msg}, State) ->
@@ -190,13 +190,13 @@ handle_cast_({succeed, Msg}, State) ->
                  {message, Msg},
                  {stop_reason, Reason} |
                  Props ++ ParentsList ++ LogProps]),
-            gerlshmud_index:put(Props),
+            egre_index:put(Props),
             Self = self(),
             spawn(fun() ->
                       % TODO clean out backups and index
                       % There's a terminate function that I don't seem to be using
                       ct:pal("~p Spawning child terminator for ~p~n", [self(), Self]),
-                      supervisor:terminate_child(gerlshmud_object_sup, Self)
+                      supervisor:terminate_child(egre_object_sup, Self)
                   end),
             {noreply, State#state{props = Props}};
         {Props, LogProps} ->
@@ -205,7 +205,7 @@ handle_cast_({succeed, Msg}, State) ->
                  {object, self()},
                  {message, Msg} |
                  Props ++ ParentsList ++ LogProps]),
-            gerlshmud_index:put(Props),
+            egre_index:put(Props),
             {noreply, State#state{props = Props}}
     end.
 
@@ -218,16 +218,16 @@ handle_info({'EXIT', From, Reason}, State = #state{props = Props}) ->
          {reason, Reason} |
          Props ++ ParentsList]),
     ?LOG_INFO("Process ~p died~n", [From]),
-    gerlshmud_index:subscribe_dead(self(), From),
+    egre_index:subscribe_dead(self(), From),
     Props2 = mark_pid_dead(From, Props),
-    gerlshmud_index:put(Props2),
+    egre_index:put(Props2),
     {stop, normal, State#state{props = Props2}};
 handle_info({replace_pid, OldPid, NewPid}, State = #state{props = Props})
   when is_pid(OldPid), is_pid(NewPid) ->
     ct:pal("~p:handle_info({replace_pid...~n", [?MODULE]),
     Props2 = replace_pid(Props, OldPid, NewPid),
-    gerlshmud_index:unsubscribe_dead(self(), OldPid),
-    gerlshmud_index:put(Props2),
+    egre_index:unsubscribe_dead(self(), OldPid),
+    egre_index:put(Props2),
     {noreply, State#state{props = Props2}};
 handle_info({Pid, Msg}, State) when is_pid(Pid) ->
     %ct:pal("~p:handle_info({~p, ~p}...~n", [?MODULE, Pid, Msg]),
@@ -247,7 +247,7 @@ terminate(Reason, _State = #state{props = Props}) ->
          {object, self()},
          {reason, Reason} |
          Props ++ ParentsList]),
-    gerlshmud_index:del(self()),
+    egre_index:del(self()),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -311,7 +311,7 @@ attempt_(Msg,
             % There's a terminate function that I don't seem to be using
             Self = self(),
             spawn(fun() ->
-                      supervisor:terminate_child(gerlshmud_object_sup, Self)
+                      supervisor:terminate_child(egre_object_sup, Self)
                   end),
             {noreply, State2};
         _ ->
@@ -583,5 +583,5 @@ replace_pid(Prop, _, _) ->
     Prop.
 
 log(Props0) ->
-    Props = gerlshmud_event_log:flatten(Props0),
-    gerlshmud_event_log:log(debug, [{module, ?MODULE} | Props]).
+    Props = egre_event_log:flatten(Props0),
+    egre_event_log:log(debug, [{module, ?MODULE} | Props]).

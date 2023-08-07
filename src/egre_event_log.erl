@@ -1,9 +1,9 @@
 %% Copyright 2022, Chris Maguire <cwmaguire@protonmail.com>
--module(gerlshmud_event_log).
+-module(egre_event_log).
 
 -behaviour(gen_server).
 
--include("include/gerlshmud.hrl").
+-include("include/egre.hrl").
 
 -export([start_link/0]).
 -export([log/2]).
@@ -33,7 +33,7 @@ log(Pid, Level, Terms) when is_atom(Level) ->
     case whereis(?MODULE) of
         undefined ->
             %io:format(user,
-                      %"gerlshmud_event_log process not found~n"
+                      %"egre_event_log process not found~n"
                       %"Pid: ~p, Level: ~p, Terms: ~p~n",
                       %[Pid, Level, Terms]);
             ok;
@@ -64,14 +64,14 @@ init([]) ->
     process_flag(priority, max),
     io:format("Starting logger (~p)~n", [self()]),
     LogPath = get_log_path(),
-    {ok, LogFile} = file:open(LogPath ++ "/gerlshmud.log", [append]),
+    {ok, LogFile} = file:open(LogPath ++ "/egre.log", [append]),
 
     io:format(user, "Logger:~n\tLog file: ~p~n", [LogFile]),
 
     {ok, #state{log_file = LogFile}}.
 
 handle_call(Request, From, State) ->
-    io:format(user, "gerlshmud_event_log:handle_call(~p, ~p, ~p)~n",
+    io:format(user, "egre_event_log:handle_call(~p, ~p, ~p)~n",
               [Request, From, State]),
     {reply, ignored, State}.
 
@@ -104,7 +104,7 @@ handle_info(Info, State) ->
     {noreply, State}.
 
 terminate(Reason, State) ->
-    io:format(user, "Terminating gerlshmud_event_log: ~p~n~p~n", [Reason, State]).
+    io:format(user, "Terminating egre_event_log: ~p~n~p~n", [Reason, State]).
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
@@ -168,7 +168,7 @@ add_index_details({_Key = {Atom1, Atom2}, Pid}, NamedProps)
     Key = list_to_atom(Str1 ++ "_" ++ Str2),
     add_index_details({Key, Pid}, NamedProps);
 add_index_details({Key, Pid}, NamedProps) when is_pid(Pid) ->
-    case gerlshmud_index:get(Pid) of
+    case egre_index:get(Pid) of
         undefined ->
             NamedProps;
         #object{id = Id, icon = Icon} ->
