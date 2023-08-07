@@ -1,14 +1,8 @@
-PROJECT = gerlshmud
-DEPS = cowboy jsx lists
+PROJECT = egre
 COMPILE_FIRST = gerlshmud_object gerlshmud_handler
 
-dep_cowboy_commit = 2.10.0
-dep_jsx = git https://github.com/talentdeficit/jsx main
-dep_lists = git https://github.com/cwmaguire/lists master
-
 ## copied from erlang.mk and added +native.
-## Brings counterattack_behaviour test down from 1+ seconds
-## to ~400ms.
+## It made one of the test faster when this was part of GERLSHMUD
 ERLC_OPTS = -Werror \
 						+debug_info \
 						+warn_export_vars \
