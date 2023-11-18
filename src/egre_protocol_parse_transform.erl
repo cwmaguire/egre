@@ -32,7 +32,7 @@ remove_prefix(Prefix, Bin) ->
     case Bin of
         <<Prefix:(size(Prefix))/binary, Rest/binary>> ->
             Rest;
-        Bin ->
+        Bin_ when Bin_ == Bin ->
             Bin
     end.
 
