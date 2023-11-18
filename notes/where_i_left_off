@@ -1,5 +1,54 @@
-Where I Left Off
+Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
+
+┏━━━━━━━━━━━━━━━━┓
+┃   2023-11-17   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+Removed egre_conn_sup from the egre_sup.
+EGRE doesn't know anything about "connections". That's a MUD thing.
+
+Responsibilities by Layer (but not implementation details)
+
+MUD
+  -content:
+    - game objects
+      - properties
+    - game rules: e.g. sword does damage
+    - any other logic that's specific to this MUD: e.g. description templates
+
+------------
+
+Engine
+  - connections
+    - include test connections
+  - player accounts
+  - loading up rules engine with MUD rules
+  - logging
+
+------------
+
+Rules Engine Process Graph
+  (lol, EGREP: Erlang Graph of Rules Engine Processes)
+
+  - process messages
+  - track processes
+  - persist process properties
+  - persist process connections
+
+EGRE knows that rules have a protocol:
+- attempt -> succeed | fail | resend | broadcast
+- maybe subscribe
+- updates
+
+So questions get turned into yes, no or more questions.
+Answers are distributed.
+This is the machinery to propagate events.
+Anything other than broadcast propagation implies logic, logic implies rules
+
+"If you have rules, I will run your rules."
+
+"have rules" implies that something must express "ruleness" to be a rule.
 
 ┏━━━━━━━━━━━━━━━━┓
 ┃   2023-08-06   ┃
@@ -16,6 +65,9 @@ First note after switching from GERLSHMUD to EGRE.
 Okay, what do I need to keep just for the graph?
 
 I've removed a bunch of notes files not relevant to the graph.
+
+░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
 
 ┏━━━━━━━━━━━━━━━━┓
 ┃   2022-08-31   ┃
