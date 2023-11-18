@@ -1,5 +1,3 @@
--define(PID(Value), {pid, Value}).
-
 -type proplist() :: [{atom(), any()}].
 -type source() :: any().
 -type type() :: any().
