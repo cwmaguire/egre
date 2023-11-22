@@ -5,15 +5,15 @@ Erlang with a graph rules engine. EGRE is that rules engine.
 
 EGRE is a graph of asynchronous processes handling events.
 Events flow through the graph and touch one process at a time.
-Each process takes in events, modifies it's internal state and either
+Each process takes in events, modifies its internal state and either
 passes on the event or triggers one or more new events.
 
-Any event is first proposed as an attempt. Attempts are passed
+Any event is first proposed as an attempt that will succeed or fail. Attempts are passed
 from process to process through the graph.  Each process can either fail the
 attempt with a reason or allow the attempt to succeed. Each process can also
 subscribe to the event to be notified of the result. Processes can also resend
 a different attempt in place of an original or pass on a modified copy of the
-original.
+original. If an attempt traverses all connected nodes without failing, it succeeds.
 
 Events flow through the graph without locking up other processes.
 Each process that handles the event will handle it independently of all other
@@ -48,6 +48,17 @@ B gets the event.
 B is triggered on "Do 'X'".
 B knows that 'X' should be replaced with a pid and sends a new event "Do <pid>".
 A triggers on "Do <pid>" and takes some action.
+
+```mermaid
+sequenceDiagram
+    participant External
+    participant A
+    participant B
+    External->>A: "Do 'X'"
+    A->>B: (Nothing to do) "Do 'X'"
+    B->>A: (Change X to pid) "Do <pid>"
+    A->>B: (Do some things) "Do <pid>"
+```
 
 So one rule process added information to an event and resent it,
 thereby triggering a another rule process that initially ignored it.
