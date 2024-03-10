@@ -112,7 +112,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% util
 
 get_log_path() ->
-    case os:getenv("GERLSHMUD_LOG_PATH") of
+    case os:getenv("EGRE_LOG_PATH") of
         false ->
             {ok, CWD} = file:get_cwd(),
             CWD;
