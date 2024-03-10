@@ -2,6 +2,125 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2024-03-10   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+=== ERROR! init_per_testcase crashed!
+	Location: [{egre_SUITE,init_per_testcase,34},
+              {test_server,do_init_per_testcase,1552},
+              {test_server,run_test_case_eval1,1253},
+              {test_server,run_test_case_eval,1223}]
+	Reason: {{badmatch,{error,{cowboy,{"no such file or directory","cowboy.app"}}}},
+ [{egre_SUITE,init_per_testcase,2,[{file,"test/egre_SUITE.erl"},{line,34}]},
+  {test_server,do_init_per_testcase,2,[{file,"test_server.erl"},{line,1552}]},
+  {test_server,run_test_case_eval1,6,[{file,"test_server.erl"},{line,1253}]},
+  {test_server,run_test_case_eval,9,[{file,"test_server.erl"},{line,1223}]}]}
+
+  Fixed
+
+=INFO REPORT==== 10-Mar-2024::15:33:56.453931 ===
+    application: egre
+    exited: {bad_return,
+                {{egre_app,start,[normal,[]]},
+                 {'EXIT',
+                     {{badmatch,
+                          {error,{ct_egre@a,{already_exists,ct_egre@a}}}},
+                      [{egre_app,setup_mnesia_schema,0,
+                           [{file,"src/egre_app.erl"},{line,41}]},
+                       {egre_app,setup_and_or_start_mnesia,0,
+                           [{file,"src/egre_app.erl"},{line,33}]},
+                       {egre_app,start,2,
+                           [{file,"src/egre_app.erl"},{line,12}]},
+                       {application_master,start_it_old,4,
+                           [{file,"application_master.erl"},{line,293}]}]}}}}
+    type: temporary
+
+  Just doing:
+
+  erl -pa ebin
+  1> application:ensure_all_started(egre)
+
+  ... crashes
+
+  Oh, I wonder if CT is already using Mnesia
+  Yeah, I added mnesia:info() and it looks like CT has a table called "schema" in RAM.
+
+  ░ Printing Mnesia info
+  ░ ---> Processes holding locks <---
+  ░ ---> Processes waiting for locks <---
+  ░ ---> Participant transactions <---
+  ░ ---> Coordinator transactions <---
+  ░ ---> Uncertain transactions <---
+  ░ ---> Active tables <---
+  ░ schema         : with 1        records occupying 422      words of mem
+  ░ ===> System info in version "4.21.4", debug level = none <===
+  ░ opt_disc. Directory "/home/c/dev/egre/logs/ct_run.ct_egre@a.2024-03-10_16.02.00/Mnesia.ct_egre@a" is NOT used.
+  ░ use fallback at restart = false
+  ░ running db nodes   = [ct_egre@a]
+  ░ stopped db nodes   = []
+  ░ master node tables = []
+  ░ remote             = []
+  ░ ram_copies         = [schema]
+  ░ disc_copies        = []
+  ░ disc_only_copies   = []
+  ░ [{ct_egre@a,ram_copies}] = [schema]
+  ░ 2 transactions committed, 0 aborted, 0 restarted, 0 logged to disc
+  ░ 0 held locks, 0 in queue; 0 local transactions, 0 remote
+  ░ 0 transactions waits for other nodes: []
+
+
+  ChatGPT was no help.
+  I think I need to look at what "ensure_all_started" does.
+  I'm guessing that if I just start Mneisa (mnesia:start()) without first creating a schmea,
+  it will create one in memory.
+
+  ░ running_db_nodes. Returns a list of nodes where Mnesia currently is running.
+
+  Yeah, looks like Mnesia was already started.
+
+  ░ opt_disc
+  ░
+  ░ Optional disc. The schema can reside on disc or in RAM. If the schema is found
+  ░ on disc, Mnesia starts as a disc-based node and the storage type of the schema
+  ░ table is disc_copies. If no schema is found on disc, Mnesia starts as a
+  ░ disc-less node and the storage type of the schema table is ram_copies. Default
+  ░ value for the application parameter is opt_disc.
+
+  Yeah, so I guess Mnesia isn't finding a schema in the directory it expects, so
+  it creates the schema in memory: I can see ram_copies = [schema].
+
+  From the "app" docs, concerning the app.src file:
+
+  ░ applications
+  ░ All applications that must be started before this application.
+
+  So, if I want to create a schema before I start Mnesia, then I can't
+  have Mnesia listed as a dependent application.
+
+┏━━━━━━━━━━━━━━━━┓
+┃   2024-03-08   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+  Here's what I'm seeing:
+
+  egre_app
+
+   - mnesia stuff
+
+   - egre_sup
+
+     - egre_object_sup (supervisor)
+
+     - egre_index (worker)
+
+     - egre_event_log (worker)
+
+  Where does egre_hierarchy come in?
+  It handles adding children to parents and then checking if a child
+  is a descendant of a parent; or rather, if an object is the child
+  of another object
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2023-11-17   ┃
 ┗━━━━━━━━━━━━━━━━┛
 
