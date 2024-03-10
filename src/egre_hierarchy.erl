@@ -28,14 +28,18 @@ insert({Parent, [Child0 | PreChildren], PostChildren},
             insert({Parent, PreChildren, [Child0 | PostChildren]}, NewParentChild)
     end.
 
-is_descendent(Hierarchy = {Parent, _}, Child) ->
-    is_descendent(Hierarchy, Parent, Child).
 
-is_descendent({Parent, [Child | _]}, Parent, Child) ->
-    true;
-is_descendent({_, []}, _, _) ->
+%% Why do I preserve the parent in the depth-first tree search?
+
+is_descendent(_Hierarchy = {TopObject, _}, TopObject) ->
     false;
-is_descendent({_NotParent, [NotChild | Children]}, Parent, Child) ->
-    is_descendent(NotChild, Parent, Child) orelse
-    is_descendent({Parent, Children}, Parent, Child).
+is_descendent(_Hierarchy = {_, Children}, Obj) ->
+    is_descendent_(Children, Obj).
 
+is_descendent_([], _) ->
+    false;
+is_descendent_([{Child, _} | _Siblings], Child) ->
+    true;
+is_descendent_([{_, GrandChildren} | Siblings], Obj) ->
+    is_descendent(GrandChildren, Obj) orelse
+    is_descendent(Siblings, Obj).
