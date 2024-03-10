@@ -29,7 +29,7 @@ setup_and_or_start_mnesia() ->
             io:format("Mnesia schema already exists~n"),
             mnesia:start();
         false ->
-            io:format("Mnesia schema doesn\'t exists~n"),
+            io:format("Mnesia schema doesn\'t exist~n"),
             setup_mnesia_schema()
     end,
     mnesia:wait_for_tables([object,
@@ -38,6 +38,8 @@ setup_and_or_start_mnesia() ->
                            2000).
 
 setup_mnesia_schema() ->
+    io:format("Printing Mnesia info~n"),
+    mnesia:info(),
     ok = mnesia:create_schema([node()]),
     io:format("Mnesia schema created~n"),
     ok = mnesia:start(),
