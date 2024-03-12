@@ -7,22 +7,8 @@
 
 -define(WAIT100, receive after 100 -> ok end).
 
-%all() -> [player_attack].
-%all() ->
-    %[player_resource_wait,
-     %player_move].
 all() ->
-    [populate,
-     get_props,
-     attemp_succeed,
-     attempt_fail,
-     attempt_succeed_sub,
-     attempt_fail_sub,
-     attempt_succeed_no_sub,
-     attempt_fail_no_sub,
-     attempt_succeed_stop,
-     resend,
-     broadcast].
+    [start_object].
 
 init_per_testcase(_, Config) ->
     %egre_dbg:add(egre_object, handle_cast_),
@@ -79,6 +65,13 @@ get_props(Pid) when is_pid(Pid) ->
         false ->
             undefined
     end.
+
+%%
+%% Tests
+%%
+
+start_object(_Config) ->
+  start([{id, []}]).
 
 player_move(Config) ->
     Object = {obj_name,
