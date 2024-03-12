@@ -7,6 +7,7 @@
   {applications, [
     kernel,
     stdlib,
+    jsx,
     runtime_tools
   ]},
   {mod, {egre_app, []}},
