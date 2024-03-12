@@ -39,7 +39,6 @@ setup_and_or_start_mnesia() ->
 
 setup_mnesia_schema() ->
     io:format("Printing Mnesia info~n"),
-    mnesia:info(),
     ok = mnesia:create_schema([node()]),
     io:format("Mnesia schema created~n"),
     ok = mnesia:start(),

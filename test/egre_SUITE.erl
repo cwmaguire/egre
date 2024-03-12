@@ -71,7 +71,11 @@ get_props(Pid) when is_pid(Pid) ->
 %%
 
 start_object(_Config) ->
-  start([{id, []}]).
+    Props = [{prop, "prop"}],
+    [{id, Pid}] = start([{id, Props}]),
+    ExpectedProps = Props ++ [{id, id}, {pid, Pid}],
+    StoredProps = egre_object:props(Pid),
+    ?assertEqual(StoredProps, ExpectedProps).
 
 player_move(Config) ->
     Object = {obj_name,
@@ -178,8 +182,9 @@ revive_process(_Config) ->
 
 start(Objects) ->
     IdPids = [{Id, start_obj(Id, Props)} || {Id, Props} <- Objects],
-    _Objs = [egre_object:populate(Pid, IdPids) || {_, Pid} <- IdPids],
-    timer:sleep(100).
+    [egre_object:populate(Pid, IdPids) || {_, Pid} <- IdPids],
+    timer:sleep(100),
+    IdPids.
 
 start_obj(Id, Props) ->
     {ok, Pid} = supervisor:start_child(egre_object_sup, [Id, Props]),
