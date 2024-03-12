@@ -2,6 +2,58 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2024-03-11   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+What am I going to test?
+
+What does EGRE do?
+What am I testing in EGRE_MUD_1?
+
+- player_move
+  - tests that {Player, move, s} works
+    - requires:
+      - rules_char_move convert to {Self, move, s, from, Room}
+      - resend with log
+
+I think I see where this is going.
+I need to test:
+- populate
+- attempt & sub
+- attempt & don't sub
+- attempt_after
+- set
+- props
+- fail
+- succeed with more objects
+- succeed on last object
+- resend
+- broadcast (only down, currently; i.e. not to owner, char, body part, top item)
+- merge
+- handle
+
+Basically, and this seems obvious now, just go through egre_object.erl and test
+almost every function.
+
+  Most of what I use is egre_object:attempt/2,3
+
+  Also, attempt/2,3 can designate the next action to be:
+  - {resend, Target, Message}
+  - {fail, Reason}
+  - succeed
+  - {broadcast, Message}
+  - stop
+
+So, for the first test I can make sure a single rule is called
+with attempt, returns succeed, and nothing subscribes so no
+object is notified; i.e. succeed is not called on any object.
+
+Actually, I can just try to start a single object.
+
+  Previously I did this with supervisor:start_child(egre_object_sup, [Id, Props]).
+  I should still be able to do that.
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2024-03-10   ┃
 ┗━━━━━━━━━━━━━━━━┛
 
