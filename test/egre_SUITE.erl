@@ -8,7 +8,8 @@
 -define(WAIT100, receive after 100 -> ok end).
 
 all() ->
-    [start_object].
+    [start_object,
+     attempt].
 
 init_per_testcase(_, Config) ->
     %egre_dbg:add(egre_object, handle_cast_),
@@ -76,6 +77,17 @@ start_object(_Config) ->
     ExpectedProps = Props ++ [{id, id}, {pid, Pid}],
     StoredProps = egre_object:props(Pid),
     ?assertEqual(StoredProps, ExpectedProps).
+
+attempt(_Config) ->
+    Props = [{should_change_to_true, false},
+             {handlers, [rules_test]}],
+    [{id, Pid}] = start([{id, Props}]),
+    egre_object:attempt(Pid, {any_message_will_do}),
+    ?WAIT100,
+    StoredProps = egre_object:props(Pid),
+    Expected = true,
+    Result = proplists:get_value(should_change_to_true, StoredProps),
+    ?assertEqual(Result, Expected).
 
 player_move(Config) ->
     Object = {obj_name,
