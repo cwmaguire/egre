@@ -2,6 +2,90 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2024-03-16   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+I wrote all this out in my commit for my second EGRE test, which checks
+if an object can call attempt on a handler module.
+
+However, I think I can sum it up by explaining that when a user types
+  "pick lock"
+there's actually two things going on here: parsing the command and then
+actually picking a lock.
+
+  This test just makes sure that a handler for an object sees an event by
+  changing one of the object's properties. Normally attempt functions don't
+  change an object's properties because a message is not an event since
+  the _intended_ action might not be possible. It's not until any handler
+  for any object judges that the message succeeded or failed that the event
+  has "happened"; even then we might not know *why* the event didn't happen.
+
+  Take, for example, picking a lock. If a  say "pick lock" and kick off a
+  {Character, pick, "lock"} message, it may be that the lock fails the
+  event before the character has a chance to point to out that it has no
+  way _to_ pick the lock. In this case we'd break the action into two
+  steps:
+  1. see if picking "lock" even makes sense:
+    - is there something called "lock"
+    - is lock "pickable"?
+    - does the character have the means to pick a lock?
+    - is the character able to do any actions?
+  2. run the lock picking logic with the actual lock and whatever the
+     player needs to pick the lock.
+
+  The first "message attempt" might fail because the player didn't have
+  a lock pick in hand, so the lock was never actually interacted with.
+
+  If the first message attempt fails the MUD might respond with:
+  "With what, your tongue?"
+
+  If the first message attempt succeeds then *now* we know that everything
+  is in place for the player to actually go about the business of trying
+  to pick the lock.
+
+  The second "message attempt" might fail because the player fails
+  whatever checks were required to pick a lock.
+
+  If the second message succeeds the lock might change it's property from
+  locked to unlocked. Further, a third message event might be kicked off
+  to sound an alarm.
+
+  (Bear in mind that I'm using this rules engine for text-based games, so
+  my exmaples are all going to be MUD related.)
+
+  The benefit of using a rules engine is that *any* logic can be
+  incorporated into any object: any object can get involved with any stage
+  of, in the example above, picking a lock:
+  - something might prevent the player from seeing the lock
+    "What lock? You don't see a lock. Maybe you just *thought* you saw a
+    lock"
+  - something might prevent an alarm from sounding:
+    "You pick the lock. You hear a fizzle and wonder if maybe an alarm was
+     supposed to sound. Boy howdy, aren't you the lucky one!"
+
+  However, the downside of all this flexibility is potentially very
+  complicated logic. If we constrain the lock-picking scenario down so
+  there can only ever be a few choices, then we could streamline things
+  down to "check if there's a lock and the player has a lockpick in hand
+  and they have the lockpick skill and if the lock is actually picked and
+  if the alarm sounds."
+
+  The idea behind this rules engine was that any logic could be inserted
+  into any event handling at any time in the future. I could decide that
+  any player wearing some combination of a ring, a hat and bare feet,
+  picking a lock made of gold at night on a Tuesday while under the
+  affects of a spell will have a +10% chance of succeeding and a +50%
+  chance of triggering an alarm.
+
+  Hmm, how would I model that?
+  Each of the properties involved could modify the event to add a flag to
+  the event, e.g. character_has_bare_feet, but what object would
+  ultimately hold the handler that checked for all the requisite flags?
+  Well, I could have an object setup to model that condition: e.g. a
+  spell. If the spell saw a message indicating that a player was actually
+  picking a lock
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2024-03-11   ┃
 ┗━━━━━━━━━━━━━━━━┛
 
