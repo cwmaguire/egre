@@ -9,9 +9,13 @@
 
 all() ->
     [start_object,
-     attempt].
+     attempt,
+     succeed_sub,
+     succeed_nosub,
+     fail_sub,
+     fail_nosub].
 
-init_per_testcase(_, Config) ->
+init_per_suite(Config) ->
     %egre_dbg:add(egre_object, handle_cast_),
     %egre_dbg:add(egre_event_log, add_index_details),
 
@@ -24,7 +28,7 @@ init_per_testcase(_, Config) ->
     egre_index:put([{pid, TestObject}, {id, test_object}]),
     [{test_object, TestObject} | Config].
 
-end_per_testcase(_, _Config) ->
+end_per_suite(_Config) ->
     ct:pal("~p stopping egre~n", [?MODULE]),
     receive after 1000 -> ok end,
     application:stop(egre).
@@ -74,34 +78,67 @@ get_props(Pid) when is_pid(Pid) ->
 start_object(_Config) ->
     Props = [{prop, "prop"}],
     [{id, Pid}] = start([{id, Props}]),
+    ?WAIT100,
     ExpectedProps = Props ++ [{id, id}, {pid, Pid}],
     StoredProps = egre_object:props(Pid),
     ?assertEqual(StoredProps, ExpectedProps).
 
 attempt(_Config) ->
     Props = [{should_change_to_true, false},
-             {handlers, [rules_test]}],
-    [{id, Pid}] = start([{id, Props}]),
+             {handlers, [rules_attempt_test]}],
+    [{_Id, Pid}] = start([{undefined, Props}]),
+    ct:pal("~p:~p: Started pid~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Pid]),
+    ?WAIT100,
     egre_object:attempt(Pid, {any_message_will_do}),
     ?WAIT100,
     StoredProps = egre_object:props(Pid),
     Expected = true,
     Result = proplists:get_value(should_change_to_true, StoredProps),
-    ?assertEqual(Result, Expected).
+    ?assertEqual(Expected, Result).
 
-player_move(Config) ->
-    Object = {obj_name,
-              [{prop1, <<"value1">>}]},
-    start([Object]),
-
-    Player = get_pid(object),
-    RoomNorth =  get_pid(room_nw),
-    RoomSouth =  get_pid(room_s),
-
-    ?assertMatch(RoomNorth, val(owner, Player)),
-    attempt(Config, Player, {Player, move, s}),
+succeed_sub(_Config) ->
+    Props = [{handlers, [rules_sub_test]}],
+    [{_Id, Pid}] = start([{undefined, Props}]),
     ?WAIT100,
-    ?assertMatch(RoomSouth, val(owner, Player)).
+    egre_object:attempt(Pid, {succeed, sub}),
+    ?WAIT100,
+    StoredProps = egre_object:props(Pid),
+    Expected = true,
+    Result = proplists:get_value(sub, StoredProps),
+    ?assertEqual(Expected, Result).
+
+succeed_nosub(_Config) ->
+    Props = [{handlers, [rules_sub_test]}],
+    [{_Id, Pid}] = start([{undefined, Props}]),
+    ?WAIT100,
+    egre_object:attempt(Pid, {succeed, no_sub}),
+    ?WAIT100,
+    StoredProps = egre_object:props(Pid),
+    Expected = undefined,
+    Result = proplists:get_value(sub, StoredProps),
+    ?assertEqual(Expected, Result).
+
+fail_sub(_Config) ->
+    Props = [{handlers, [rules_sub_test]}],
+    [{_Id, Pid}] = start([{undefined, Props}]),
+    ?WAIT100,
+    egre_object:attempt(Pid, {fail, sub}),
+    ?WAIT100,
+    StoredProps = egre_object:props(Pid),
+    Expected = true,
+    Result = proplists:get_value(sub, StoredProps),
+    ?assertEqual(Expected, Result).
+
+fail_nosub(_Config) ->
+    Props = [{handlers, [rules_sub_test]}],
+    [{_Id, Pid}] = start([{undefined, Props}]),
+    ?WAIT100,
+    egre_object:attempt(Pid, {fail, no_sub}),
+    ?WAIT100,
+    StoredProps = egre_object:props(Pid),
+    Expected = undefined,
+    Result = proplists:get_value(sub, StoredProps),
+    ?assertEqual(Expected, Result).
 
 wait_for(_NoUnmetConditions = [], _) ->
     ok;

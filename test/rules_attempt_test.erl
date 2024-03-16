@@ -1,4 +1,4 @@
--module(rules_test).
+-module(rules_attempt_test).
 
 -behaviour(egre_handler).
 
@@ -18,8 +18,10 @@ attempt({_Parents, Props, _Message}) ->
 attempt(_) ->
     undefined.
 
-succeed(_) ->
-    ok.
+succeed({Props, _Msg}) ->
+    throw(should_never_happen),
+    Props.
 
-fail(_) ->
-    ok.
+fail({Props, _Message, _Reason}) ->
+    throw(should_never_happen),
+    Props.
