@@ -103,3 +103,6 @@ one process per object.
       Well, I think the lesson here might be *not* to make the
       logic that complicated, because it's a lot of work to
       figure out in any case.
+
+I wonder if perhaps I just wanted as many object processes as possible
+to be active at once.
