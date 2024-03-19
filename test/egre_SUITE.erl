@@ -35,6 +35,16 @@ end_per_suite(_Config) ->
     receive after 1000 -> ok end,
     application:stop(egre).
 
+init_per_testcase(_TestCase, Config) ->
+    Config.
+
+end_per_testcase(_TestCase, _Config) ->
+    case assert_ct_test_process_mailbox_empty() of
+        fail ->
+            {fail, "CT test processes should not be getting messages"};
+        _ ->
+            return_ignored
+    end.
 
 all_vals(Key, Obj) ->
     Props = case get_props(Obj) of
@@ -136,7 +146,7 @@ succeed_sub(_Config) ->
     Props = [{handlers, [rules_sub_test]}],
     [{_Id, Pid}] = start([{undefined, Props}]),
     ?WAIT100,
-    egre_object:attempt(Pid, {succeed, sub}),
+    egre_object:attempt_after(0, Pid, {succeed, sub}, _ShouldSub = false),
     ?WAIT100,
     StoredProps = egre_object:props(Pid),
     Expected = true,
@@ -147,7 +157,7 @@ succeed_nosub(_Config) ->
     Props = [{handlers, [rules_sub_test]}],
     [{_Id, Pid}] = start([{undefined, Props}]),
     ?WAIT100,
-    egre_object:attempt(Pid, {succeed, no_sub}),
+    egre_object:attempt_after(0, Pid, {succeed, no_sub}, _ShouldSub = false),
     ?WAIT100,
     StoredProps = egre_object:props(Pid),
     Expected = undefined,
@@ -158,7 +168,7 @@ fail_sub(_Config) ->
     Props = [{handlers, [rules_sub_test]}],
     [{_Id, Pid}] = start([{undefined, Props}]),
     ?WAIT100,
-    egre_object:attempt(Pid, {fail, sub}),
+    egre_object:attempt_after(0, Pid, {fail, sub}, _ShouldSub = false),
     ?WAIT100,
     StoredProps = egre_object:props(Pid),
     Expected = true,
@@ -169,7 +179,7 @@ fail_nosub(_Config) ->
     Props = [{handlers, [rules_sub_test]}],
     [{_Id, Pid}] = start([{undefined, Props}]),
     ?WAIT100,
-    egre_object:attempt(Pid, {fail, no_sub}),
+    egre_object:attempt_after(0, Pid, {fail, no_sub}, _ShouldSub = false),
     ?WAIT100,
     StoredProps = egre_object:props(Pid),
     Expected = undefined,
@@ -278,6 +288,15 @@ start_obj(Id, Props) ->
 attempt(Config, Target, Message) ->
     TestObject = proplists:get_value(test_object, Config),
     TestObject ! {attempt, Target, Message}.
+
+assert_ct_test_process_mailbox_empty() ->
+    receive
+        X ->
+            ct:pal("~p:~p: CT test process got message: ~p~n", [?MODULE, ?FUNCTION_NAME, X]),
+            fail
+        after 0 ->
+            ok
+    end.
 
 % Add to commit comment
 % This is from f8e3ccfadaef667e39934d38e8f2e6e49a978a78
