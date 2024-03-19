@@ -44,6 +44,11 @@ Okay, I see a problem with my tests now that I'm trying to test attempt_after/3.
   Then I also got the attempt_after testing working, which is what
   I originally set out to do tonight.
 
+  I've also added an end_per_testcase condition so that any test will
+  fail if the CT test process has any messages in its mailbox. This
+  helped me catch four tests that were still using egre_object:attempt/2
+  instead of egre_object:attempt_after/4.
+
 ┏━━━━━━━━━━━━━━━━┓
 ┃   2024-03-16   ┃
 ┗━━━━━━━━━━━━━━━━┛
