@@ -2,6 +2,49 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2024-03-18   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+Okay, I see a problem with my tests now that I'm trying to test attempt_after/3.
+
+  When I do egre_object:attempt/2, it automatically sets 'subs' to
+  [self()], but self() is the ct test process.
+
+  If I do egre_object:attempt_after/3, it has the Pid send itself
+  a message, which calls egre_object:attempt/2, which automatically
+  sets 'sub's to [self()], but self() is now the object process.
+
+  So attempt/2 ends up subscribing the ct test process to the result
+  of the message attempt, and attempt_after/3 ends up subscribing
+  the target object process to the result of the message attempt.
+
+  I think I should always use attempt_after/3 because it ends up
+  calling attempt/2 as well.
+
+  One problem with always using attempt_after/3 is that I can't
+  test _not_ subscribing from the outset, as opposed to not subscribing
+  during message handling.
+
+  Should message handling subscription directives in the handler
+  override the initial attempt/2 call subscription?
+
+  It looks like the only place I use send_after/3 is in the index.
+
+  Very rarely do I ever call attempt/3 and specify not to sub, e.g.
+  - cause effect amount
+  - send message to player
+
+  I think I need to be able to test attempts with and without automatic
+  subscription, because it's two different mechanisms:
+  1) an object subscribes after handling an attempt
+  2) an object subscribes when it kicks off the message
+
+  Okay, I split the attempt test into two: one that subs from the get-go,
+  and one that doesn't.
+  Then I also got the attempt_after testing working, which is what
+  I originally set out to do tonight.
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2024-03-16   ┃
 ┗━━━━━━━━━━━━━━━━┛
 
@@ -84,6 +127,19 @@ actually picking a lock.
   Well, I could have an object setup to model that condition: e.g. a
   spell. If the spell saw a message indicating that a player was actually
   picking a lock
+
+Okay, I have the following tests:
+- start object
+- send message attempt
+  - check changed props
+- succeed message and subscribe
+  - check changed props
+- succeed message and don't subscribe
+- fail message and subscribe
+  - check changed props
+- fail message and don't subscribe
+
+See 2024-03-11 for the other tests I need.
 
 ┏━━━━━━━━━━━━━━━━┓
 ┃   2024-03-11   ┃
