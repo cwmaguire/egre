@@ -9,7 +9,9 @@
 
 all() ->
     [start_object,
-     attempt,
+     attempt_sub,
+     attempt_nosub,
+     attempt_after,
      succeed_sub,
      succeed_nosub,
      fail_sub,
@@ -83,18 +85,52 @@ start_object(_Config) ->
     StoredProps = egre_object:props(Pid),
     ?assertEqual(StoredProps, ExpectedProps).
 
-attempt(_Config) ->
+attempt_sub(_Config) ->
     Props = [{should_change_to_true, false},
              {handlers, [rules_attempt_test]}],
-    [{_Id, Pid}] = start([{undefined, Props}]),
-    ct:pal("~p:~p: Started pid~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Pid]),
+    [{Id, Pid}] = start([{undefined, Props}]),
+    ct:pal("~p:~p: Started ~p with pid~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Id, Pid]),
     ?WAIT100,
-    egre_object:attempt(Pid, {any_message_will_do}),
+    egre_object:attempt_after(0, Pid, {any_message_will_do, sub}),
     ?WAIT100,
     StoredProps = egre_object:props(Pid),
     Expected = true,
     Result = proplists:get_value(should_change_to_true, StoredProps),
     ?assertEqual(Expected, Result).
+
+attempt_nosub(_Config) ->
+    Props = [{should_change_to_true, false},
+             {handlers, [rules_attempt_test]}],
+    [{Id, Pid}] = start([{undefined, Props}]),
+    ct:pal("~p:~p: Started ~p with pid~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Id, Pid]),
+    ?WAIT100,
+    egre_object:attempt_after(0, Pid, {any_message_will_do, nosub}, _ShouldSub = false),
+    ?WAIT100,
+    StoredProps = egre_object:props(Pid),
+    Expected = true,
+    Result = proplists:get_value(should_change_to_true, StoredProps),
+    ?assertEqual(Expected, Result).
+
+attempt_after(_Config) ->
+    Props = [{should_change_to_true, false},
+             {handlers, [rules_attempt_test]}],
+    [{Id, Pid}] = start([{undefined, Props}]),
+    ct:pal("~p:~p: Started ~p with pid~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Id, Pid]),
+    ?WAIT100,
+    egre_object:attempt_after(700, Pid, {any_message_will_do, nosub}, _ShouldSub = false),
+
+    receive after 200 -> ok end,
+    StoredPropsBefore = egre_object:props(Pid),
+    ExpectedBefore = false,
+    ResultBefore = proplists:get_value(should_change_to_true, StoredPropsBefore),
+    ?assertEqual(ExpectedBefore, ResultBefore),
+
+    receive after 1000 -> ok end,
+    StoredPropsAfter = egre_object:props(Pid),
+    ExpectedAfter = true,
+    ResultAfter = proplists:get_value(should_change_to_true, StoredPropsAfter),
+    ?assertEqual(ExpectedAfter, ResultAfter).
+
 
 succeed_sub(_Config) ->
     Props = [{handlers, [rules_sub_test]}],

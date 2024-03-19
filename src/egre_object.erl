@@ -11,6 +11,7 @@
 -export([attempt/2]).
 -export([attempt/3]).
 -export([attempt_after/3]).
+-export([attempt_after/4]).
 -export([set/2]).
 -export([props/1]).
 
@@ -86,12 +87,15 @@ attempt(Pid, Msg, ShouldSubscribe) ->
     send(Pid, {attempt, Msg, #procs{subs = Subs}}).
 
 attempt_after(Millis, Pid, Msg) ->
+    attempt_after(Millis, Pid, Msg, _ShouldSubscribe = true).
+
+attempt_after(Millis, Pid, Msg, ShouldSubscribe) ->
     log([{stage, attempt_after},
          {object, self()},
          {target, Pid},
          {message, Msg},
          {millis, Millis}]),
-    erlang:send_after(Millis, Pid, {Pid, Msg}).
+    erlang:send_after(Millis, Pid, {send_after, Pid, Msg, ShouldSubscribe}).
 
 set(Pid, Prop) ->
     send(Pid, {set, Prop}).
@@ -229,9 +233,8 @@ handle_info({replace_pid, OldPid, NewPid}, State = #state{props = Props})
     egre_index:unsubscribe_dead(self(), OldPid),
     egre_index:put(Props2),
     {noreply, State#state{props = Props2}};
-handle_info({Pid, Msg}, State) when is_pid(Pid) ->
-    %ct:pal("~p:handle_info({~p, ~p}...~n", [?MODULE, Pid, Msg]),
-    attempt(Pid, Msg),
+handle_info({send_after, Pid, Msg, ShouldSub}, State) when is_pid(Pid) ->
+    attempt(Pid, Msg, ShouldSub),
     {noreply, State};
 handle_info(Unknown, State = #state{props = Props}) ->
     {_, ParentsList} = parents(Props),
@@ -395,6 +398,7 @@ handle(succeed, Msg, Procs = #procs{subs = Subs}, _Props) ->
         {Next, Procs2} ->
             send(Next, {attempt, Msg, Procs2});
         none ->
+            ct:pal("~p:~p: Sending succeed to subs:~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Subs]),
             [send(Sub, {succeed, Msg}, Procs) || Sub <- Subs]
     end;
 handle({broadcast, Msg}, _Msg, _Procs, Props) ->

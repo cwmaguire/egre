@@ -18,7 +18,9 @@ attempt({_Parents, Props, _Message}) ->
 attempt(_) ->
     undefined.
 
-succeed({Props, _Msg}) ->
+succeed({Props, _Msg = {_, sub}}) ->
+    Props;
+succeed({Props, _Msg = {_, nosub}}) ->
     throw(should_never_happen),
     Props.
 
