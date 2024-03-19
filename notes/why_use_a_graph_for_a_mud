@@ -1,0 +1,105 @@
+┏━━━━━━━━━━━━━━━━┓
+┃   2024-03-18   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+I can't remember why I started this MUD the way I did, back in 2015-01-25.
+I know I have videos on YouTube mentioning the concurrency, but why
+one process per object.
+
+  It might have just been for fun. Erlang is built to have many, many
+  processes, so maybe I just thought it would be cool to build a MUD
+  where every object had its own process.
+
+  Is there a reason why I couldn't create this MUD with objects as data
+  and all the rules baked into less modules? e.g. an "attack" module.
+
+  Well, for one thing I couldn't load in new rules while the MUD was
+  running without updating all the modules that required changes.
+  With this model I could add a new handler module at any time just by
+  doing l(new_module) in the shell and then adding it to the list
+  of handlers for any object.
+
+  Other than that, I don't see how it would be difficult, let alone
+  _more_ difficult, to have logic for anything I could do with a rules
+  engine. About the only issue would be having massive modules holding
+  all the rules; can Icome up with any example where multiple different
+  situations can effect an outcome? e.g. you want to do something like pick
+  a lock and there's an unlimited number of states that could affect the
+  outcome:
+  - weather
+  - time of day
+  - clothing / armor / jewellery / lack of any of these
+  - character buff or debuff
+  - spell / prayer
+  - weapon / tool / mod / circuit
+  - body part
+  - any combination of the preceding
+
+  Seems like it would be relatively straightforward to have a list of
+  functions for that case, then a list of those lists of functions for
+  each possible case that could affect lock picking:
+
+  [
+   [PlayerHasBareFeet, IsRaining, IsTuesday, IsBetween11And12PM],
+   [PlayerWearingRingX, PlayerHasSpellXCast]
+  ]
+
+  Or, have a list of all the different functions for all conditions,
+  and go through them. This might look like a BE Tree that takes
+  a set of variables and goes through every boolean expression set,
+  compiled into a tree with duplicates eliminated. Each condition
+  can be written as text.
+
+  Or, I could do what I'm doing with the graph but walk the different
+  objects in a tree:
+  - Ring 1: affect this event
+  - Weather: affect this event
+  - Footwear: affect this event
+  - <everything in this room>: affect this event
+  - <everything in every surrounding room>: affect this event
+  The downside here is that we have to stop the world to wait for each
+  possible world element. The upside is that events can't happen
+  out of order. Also, since my motto for this MUD is "infinit CPU, infinite
+  memory, infinite bandwidth", it's just as efficient.
+
+    With the concurrent graph processing, every object can be doing
+    work simultaneously: different events kicked off by different
+    triggers can run together: two different players picking two
+    different locks? No problem, every process for the involved
+    locks handles the message storm created by picking the locks
+    concurrently.
+
+    Then again, if I have an event process, and a process for every
+    object, then multiple event processes can run concurrently too:
+    each event process passes the event to each object process.
+    One problem with this is the querying: I guess each object
+    could pass back either a value or a function; once all the values
+    and functions are returned, each function could be run on the
+    values; although, how do you know if a function has the values
+    it needs when you run it?
+
+      Consider: a ring will help with lock picking if the user is
+      wearing an activated necklace; the necklace is only active
+      if the player is suffering from hunger;  the player is only
+      suffering from hunger if they're hungry and they don't have
+      anything preventing hungry from making them suffer.
+
+      Each condition that needs to check something needs to add
+      that condition to the list and then maybe go to the end of the
+      line. That's exactly what the graph does: each handler
+      ignores messages until all the requisite details are filled
+      in. Granted, it's still super complicated: one of the conditions
+      needs be programmed to look for the rest of the conditions:
+      e.g. the ring updates the message from "player picks lock"
+      to "Player picks Lock while maybe_wearing_necklace_x", whereupon
+      necklace "x", seeing maybe_wearing_necklace_x, changes
+      the message to "Player wearing NecklaceX picks Lock while_hungry",
+      at which point the player's hunger buff process changes it
+      to "Player maybe_suffering_humber wearing NecklaceX picks Lock"; now
+      everything that can affect whether a player suffers from
+      hunger can resend the message with "not_suffering_hunger".
+      But what if multiple buffs and debuffs are interacting.
+
+      Well, I think the lesson here might be *not* to make the
+      logic that complicated, because it's a lot of work to
+      figure out in any case.
