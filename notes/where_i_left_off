@@ -2,6 +2,15 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2024-03-19   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+Added tests for set, populate and "second order sub", by which I mean
+that object 1 gets an event, passes it to object 2, object 2 subs or
+doesn't and then object 2 gets or doesn't get the succeed or fail
+message.
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2024-03-18   ┃
 ┗━━━━━━━━━━━━━━━━┛
 

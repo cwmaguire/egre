@@ -1,4 +1,55 @@
 ┏━━━━━━━━━━━━━━━━┓
+┃   2024-03-19   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+I don't know that I ever had a _great_ reason for doing a graph rules engine.
+In fact, I don't think I thought about it as a "rules engine" for quite some
+time. I only named it a "graph of stream handlers" after I had already named it
+"erlmud". So the idea of it being a rules engine has only gradually emerged.
+Hmm, I think the original idea was that the objects would manage events
+themselves: each object in the MUD was an equal participant: no processes would
+have control over other processes.
+
+Yeah, that resonates. I think my original idea may just have been to
+create a mesh of cooperative, independent nodes. Each MUD object was
+a discrete, independent unit.
+
+I remember thinking about walking on sand at the beach. (It doesn't matter
+that it was at the beach, but I *was* thinking about walking on sand
+particularly at the beach. I live in a beach town.) When I step on the
+top layer of sand grains, there's no "manager" object in reality that
+stops the world and communicates or regulates the interaction with all
+of the top layer of grains and the grains that they touch. Each individual
+grain of sand, by virtue of its nature, pushes against other grains of sand.
+This continues until the energy from stepping down has been distributed
+throughout enough grains of sand that's it's disipated in movement and
+other energy transfer (sound, heat?).
+
+So, this was never about making a rules engine, it was about making a MUD
+out of autonomous pieces that don't control each other. It was about _not_
+having management. I think it was more about pure OO: each MUD element
+is a separate little computer, like a grain of sand, and all those little
+computers, like the grains of sand, communicates with its neighbour.
+
+So, it's a mesh network rules engine. Time for a rename! lol.
+"Mesh Network Rules Engine" - MNRE
+"Rules Engine Mesh Network" - REMN
+
+Wiipedia talks about mesh networks as nodes that can self-organize in
+order to route information. That's not what this is. A MUD expresses
+the topology and the MUD rules control the movement of elements. That is,
+a ring can move from a hand to the ground, but the ring isn't "self-organizing".
+Or, the ring at least isn't self-organizing (because the ring itself
+could cause it to be dropped on the ground) for the purpose of communication.
+The ring is just finding a steady state where all rules are satisfied, such
+that no rule is kicking off any more events.
+
+So, EGRE is a graph of independent nodes that seeks a steady state upon
+being perturbed by events.
+
+What I'm doing seems to match https://en.wikipedia.org/wiki/Reactive_programming
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2024-03-18   ┃
 ┗━━━━━━━━━━━━━━━━┛
 
