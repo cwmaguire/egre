@@ -15,7 +15,10 @@ all() ->
      succeed_sub,
      succeed_nosub,
      fail_sub,
-     fail_nosub].
+     fail_nosub,
+     second_order_sub,
+     set,
+     populate].
 
 init_per_suite(Config) ->
     %egre_dbg:add(egre_object, handle_cast_),
@@ -99,7 +102,6 @@ attempt_sub(_Config) ->
     Props = [{should_change_to_true, false},
              {handlers, [rules_attempt_test]}],
     [{Id, Pid}] = start([{undefined, Props}]),
-    ct:pal("~p:~p: Started ~p with pid~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Id, Pid]),
     ?WAIT100,
     egre_object:attempt_after(0, Pid, {any_message_will_do, sub}),
     ?WAIT100,
@@ -112,7 +114,6 @@ attempt_nosub(_Config) ->
     Props = [{should_change_to_true, false},
              {handlers, [rules_attempt_test]}],
     [{Id, Pid}] = start([{undefined, Props}]),
-    ct:pal("~p:~p: Started ~p with pid~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Id, Pid]),
     ?WAIT100,
     egre_object:attempt_after(0, Pid, {any_message_will_do, nosub}, _ShouldSub = false),
     ?WAIT100,
@@ -125,7 +126,6 @@ attempt_after(_Config) ->
     Props = [{should_change_to_true, false},
              {handlers, [rules_attempt_test]}],
     [{Id, Pid}] = start([{undefined, Props}]),
-    ct:pal("~p:~p: Started ~p with pid~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Id, Pid]),
     ?WAIT100,
     egre_object:attempt_after(700, Pid, {any_message_will_do, nosub}, _ShouldSub = false),
 
@@ -185,6 +185,112 @@ fail_nosub(_Config) ->
     Expected = undefined,
     Result = proplists:get_value(sub, StoredProps),
     ?assertEqual(Expected, Result).
+
+set(_Config) ->
+    Props = [{should_change_to_true, false}],
+    [{_Id, Pid}] = start([{undefined, Props}]),
+    ?WAIT100,
+    egre_object:set(Pid, {should_change_to_true, true}),
+    ?WAIT100,
+    StoredProps1 = egre_object:props(Pid),
+    Expected1 = true,
+    Result1 = proplists:get_value(should_change_to_true, StoredProps1),
+    ?assertEqual(Expected1, Result1),
+    egre_object:set(Pid, {new_key, new_value}),
+    ?WAIT100,
+    StoredProps2 = egre_object:props(Pid),
+    Expected2 = new_value,
+    Result2 = proplists:get_value(new_key, StoredProps2),
+    ?assertEqual(Expected2, Result2).
+
+populate(_Config) ->
+    Id1 = random_atom(),
+    Id2 = random_atom(),
+
+    Props1 = [{a, b}, {object2, Id2}],
+    [{Id1_, Pid1}] = start([{Id1, Props1}]),
+    ?assertEqual(Id1, Id1_),
+
+    Props2 = [{c, d}, {object1, Id1}],
+    [{Id2_, Pid2}] = start([{Id2, Props2}]),
+    ?assertEqual(Id2, Id2_),
+    ?WAIT100,
+
+    IdPids = [{Id1, Pid1}, {Id2, Pid2}],
+
+    egre_object:populate(Pid1, IdPids),
+    egre_object:populate(Pid2, IdPids),
+
+    StoredProps1 = egre_object:props(Pid1),
+    Expected1 = Pid2,
+    Result1 = proplists:get_value(object2, StoredProps1),
+    ?assertEqual(Expected1, Result1),
+
+    StoredProps2 = egre_object:props(Pid2),
+    Expected2 = Pid1,
+    Result2 = proplists:get_value(object1, StoredProps2),
+    ?assertEqual(Expected2, Result2).
+
+second_order_sub(_Config) ->
+    Id1 = random_atom(),
+    Id2 = random_atom(),
+
+    Props1 = [{should_stay_false, false},
+              {handlers, [rules_passthrough_test]},
+              {object2, Id2}],
+    [{_Id1, Pid1}] = start([{Id1, Props1}]),
+
+    Props2 = [{handlers, [rules_sub_test]}],
+    [{_Id2, Pid2}] = start([{Id2, Props2}]),
+
+    IdPids = [{Id1, Pid1}, {Id2, Pid2}],
+
+    egre_object:populate(Pid1, IdPids),
+    %egre_object:populate(Pid2, IdPids),
+
+    ShouldSub = false,
+
+    ?WAIT100,
+    egre_object:attempt_after(0, Pid1, {succeed, sub}, ShouldSub),
+    ?WAIT100,
+    StoredProps1 = egre_object:props(Pid2),
+    Expected1 = true,
+    Result1 = proplists:get_value(sub, StoredProps1),
+    ?assertEqual(Expected1, Result1),
+
+    ?WAIT100,
+    egre_object:set(Pid2, {sub, undefined}),
+    ?WAIT100,
+    egre_object:attempt_after(0, Pid1, {succeed, no_sub}, ShouldSub),
+    ?WAIT100,
+    StoredProps2 = egre_object:props(Pid2),
+    Expected2 = undefined,
+    Result2 = proplists:get_value(sub, StoredProps2),
+    ?assertEqual(Expected2, Result2),
+
+    ?WAIT100,
+    egre_object:set(Pid2, {sub, undefined}),
+    ?WAIT100,
+    egre_object:attempt_after(0, Pid1, {fail, sub}, ShouldSub),
+    ?WAIT100,
+    StoredProps3 = egre_object:props(Pid2),
+    Expected3 = true,
+    Result3 = proplists:get_value(sub, StoredProps3),
+    ?assertEqual(Expected3, Result3),
+
+    ?WAIT100,
+    egre_object:set(Pid2, {sub, undefined}),
+    ?WAIT100,
+    egre_object:attempt_after(0, Pid1, {fail, no_sub}, ShouldSub),
+    ?WAIT100,
+    StoredProps4 = egre_object:props(Pid2),
+    Expected4 = undefined,
+    Result4 = proplists:get_value(sub, StoredProps4),
+    ?assertEqual(Expected4, Result4).
+
+%%
+%% END TESTS
+%%
 
 wait_for(_NoUnmetConditions = [], _) ->
     ok;
@@ -327,3 +433,6 @@ mock_object() ->
 get_pid(Id) ->
     #object{pid = Pid} = egre_index:get(Id),
     Pid.
+
+random_atom() ->
+    list_to_atom([rand:uniform(94) + 32 || _ <- lists:seq(1,10)]).

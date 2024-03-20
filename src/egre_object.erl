@@ -398,7 +398,6 @@ handle(succeed, Msg, Procs = #procs{subs = Subs}, _Props) ->
         {Next, Procs2} ->
             send(Next, {attempt, Msg, Procs2});
         none ->
-            ct:pal("~p:~p: Sending succeed to subs:~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Subs]),
             [send(Sub, {succeed, Msg}, Procs) || Sub <- Subs]
     end;
 handle({broadcast, Msg}, _Msg, _Procs, Props) ->
