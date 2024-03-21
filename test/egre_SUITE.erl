@@ -18,7 +18,8 @@ all() ->
      fail_nosub,
      second_order_sub,
      set,
-     populate].
+     populate,
+     broadcast].
 
 init_per_suite(Config) ->
     %egre_dbg:add(egre_object, handle_cast_),
@@ -101,7 +102,7 @@ start_object(_Config) ->
 attempt_sub(_Config) ->
     Props = [{should_change_to_true, false},
              {handlers, [rules_attempt_test]}],
-    [{Id, Pid}] = start([{undefined, Props}]),
+    [{_Id, Pid}] = start([{undefined, Props}]),
     ?WAIT100,
     egre_object:attempt_after(0, Pid, {any_message_will_do, sub}),
     ?WAIT100,
@@ -113,7 +114,7 @@ attempt_sub(_Config) ->
 attempt_nosub(_Config) ->
     Props = [{should_change_to_true, false},
              {handlers, [rules_attempt_test]}],
-    [{Id, Pid}] = start([{undefined, Props}]),
+    [{_Id, Pid}] = start([{undefined, Props}]),
     ?WAIT100,
     egre_object:attempt_after(0, Pid, {any_message_will_do, nosub}, _ShouldSub = false),
     ?WAIT100,
@@ -125,7 +126,7 @@ attempt_nosub(_Config) ->
 attempt_after(_Config) ->
     Props = [{should_change_to_true, false},
              {handlers, [rules_attempt_test]}],
-    [{Id, Pid}] = start([{undefined, Props}]),
+    [{_Id, Pid}] = start([{undefined, Props}]),
     ?WAIT100,
     egre_object:attempt_after(700, Pid, {any_message_will_do, nosub}, _ShouldSub = false),
 
@@ -288,6 +289,68 @@ second_order_sub(_Config) ->
     Result4 = proplists:get_value(sub, StoredProps4),
     ?assertEqual(Expected4, Result4).
 
+broadcast(_Config) ->
+    OwnerId = random_atom(),
+    CharId = random_atom(),
+    BodyPartId = random_atom(),
+    TopItemId = random_atom(),
+    MainId = random_atom(),
+    Child1Id = random_atom(),
+    Child2Id = random_atom(),
+    GrandchildId = random_atom(),
+    UnrelatedId = random_atom(),
+    OtherParentId = random_atom(),
+
+    ParentIdProps = [{Id, []} || Id <- [OwnerId, CharId, BodyPartId, TopItemId]],
+    ParentIdPids = start(ParentIdProps),
+
+    MainObjectProps = [{handlers, [rules_broadcast_test]},
+                       {name, main},
+                       {owner, OwnerId},
+                       {character, CharId},
+                       {body_part, BodyPartId},
+                       {top_item, TopItemId},
+                       {child, Child1Id},
+                       {child, Child2Id}],
+    [{_MainId, MainPid}] = start([{MainId, MainObjectProps}]),
+
+    ChildProps = [{handlers, [rules_sub_test]}],
+    [{_Child1Id, Child1Pid}] = start([{Child1Id, [{name, child1} | ChildProps]}]),
+
+    [{_OtherId, OtherParentPid}] = start([{OtherParentId, [{name, other} | ChildProps]}]),
+
+    Child2Props = [{name, child2},
+                   {child, GrandchildId},
+                   {owner, OtherParentId} | ChildProps],
+    [{_Child2Id, Child2Pid}] = start([{Child2Id, Child2Props}]),
+
+    GrandchildProps = [{name, grandchild},
+                       {owner, Child2Id} | ChildProps],
+    [{_GrandchildId, GrandchildPid}] = start([{GrandchildId, GrandchildProps}]),
+    [{_UnId, UnrelatedPid}] = start([{UnrelatedId, [{name, unrelated} | ChildProps]}]),
+
+    IdPids = [{MainId, MainPid},
+              {Child1Id, Child1Pid},
+              {Child2Id, Child2Pid},
+              {GrandchildId, GrandchildPid},
+              {UnrelatedId, UnrelatedPid},
+              {OtherParentId, OtherParentPid} | ParentIdPids],
+
+    [egre_object:populate(Pid, IdPids) || {_Id, Pid} <- IdPids],
+
+    ?WAIT100,
+    egre_object:attempt_after(0, MainPid, {succeed, sub}, _Sub = false),
+    receive after 600 -> ok end,
+
+    assertProp(MainPid, sub, undefined),
+
+    NonParentPids = [Child1Pid, Child2Pid, GrandchildPid],
+    [assertProp(Pid, sub, true) || Pid <- NonParentPids],
+
+    [assertProp(Pid, sub, undefined) || {_Id, Pid} <- ParentIdPids],
+    [assertProp(Pid, sub, undefined) || {_Id, Pid} <- [UnrelatedPid, OtherParentPid]].
+
+
 %%
 %% END TESTS
 %%
@@ -403,6 +466,14 @@ assert_ct_test_process_mailbox_empty() ->
         after 0 ->
             ok
     end.
+
+assertProp(Pid, Key, Value) ->
+    Props = egre_object:props(Pid),
+    %ct:pal("~p:~p: Pid ~p: Expecting {~p, ~p}, got Props~n\t~p~n",
+    %       [?MODULE, ?FUNCTION_NAME, Pid, Key, Value, Props]),
+    Expected = Value,
+    Actual = proplists:get_value(Key, Props),
+    ?assertEqual(Expected, Actual).
 
 % Add to commit comment
 % This is from f8e3ccfadaef667e39934d38e8f2e6e49a978a78

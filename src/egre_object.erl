@@ -404,12 +404,14 @@ handle({broadcast, Msg}, _Msg, _Procs, Props) ->
     %TODO have the handler that returned this also
     %return a filter; other handlers might not want
     %to only broadcast "down".
-    NotParents = [Prop || Prop = {Key, _} <- Props,
+    Self = pid,
+    NotSelfOrParents = [Prop || Prop = {Key, _} <- Props,
                           Key /= owner,
                           Key /= character,
                           Key /= body_part,
-                          Key /= top_item],
-    [broadcast(Proc, Msg) || Proc <- procs(NotParents)];
+                          Key /= top_item,
+                          Key /= Self],
+    [broadcast(Proc, Msg) || Proc <- procs(NotSelfOrParents)];
 % XXX what's this used by?
 handle(stop, _Msg, _Procs, Props) ->
     NotParents = [Prop || Prop = {Key, _} <- Props,
@@ -417,11 +419,12 @@ handle(stop, _Msg, _Procs, Props) ->
                           Key /= character,
                           Key /= body_part,
                           Key /= top_item],
-    [broadcast(Proc, stop) || Proc <- procs(NotParents)],
+    NotSelf = pid,
+    [broadcast(Proc, stop) || Proc <- procs([NotSelf | NotParents])],
     stop.
 
 broadcast(Pid, Msg) ->
-    attempt(Pid, Msg).
+    attempt_after(0, Pid, Msg).
 
 send(Pid, SendMsg = {fail, _Reason, _Msg}, _Procs) ->
     send_(Pid, SendMsg);
