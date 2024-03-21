@@ -2,6 +2,36 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2024-03-20   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+I need to test:
+- populate
+- attempt & sub
+- attempt & don't sub
+- attempt_after
+- set
+- props
+- fail
+- succeed with more objects
+- succeed on last object
+- resend
+- broadcast
+  - only down, currently
+    - not to owner
+    - not to char
+    - not to body part
+    - not to top item
+  - not to self ({pid, Self})
+- merge
+  - This is tested by testing chained objects, I think
+- handle
+- stop
+  - should stop child items
+  - should stop child body parts
+    - this might not be implemented because procs/1 might not return it
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2024-03-19   ┃
 ┗━━━━━━━━━━━━━━━━┛
 
