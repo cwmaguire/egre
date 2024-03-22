@@ -19,7 +19,8 @@ all() ->
      second_order_sub,
      set,
      populate,
-     broadcast].
+     broadcast,
+     resend].
 
 init_per_suite(Config) ->
     %egre_dbg:add(egre_object, handle_cast_),
@@ -350,6 +351,17 @@ broadcast(_Config) ->
     [assertProp(Pid, sub, undefined) || {_Id, Pid} <- ParentIdPids],
     [assertProp(Pid, sub, undefined) || {_Id, Pid} <- [UnrelatedPid, OtherParentPid]].
 
+resend(_Config) ->
+    Id = random_atom(),
+    Props = [{handlers, [rules_resend_test]}],
+    [{_Id, Pid}] = start([{Id, Props}]),
+
+    ?WAIT100,
+    egre_object:attempt_after(0, Pid, {resend}, _Sub = false),
+    ?WAIT100,
+    assertProp(Pid, resent, true),
+    assertProp(Pid, received, true),
+    assertProp(Pid, sub, true).
 
 %%
 %% END TESTS
@@ -473,7 +485,7 @@ assertProp(Pid, Key, Value) ->
     %       [?MODULE, ?FUNCTION_NAME, Pid, Key, Value, Props]),
     Expected = Value,
     Actual = proplists:get_value(Key, Props),
-    ?assertEqual(Expected, Actual).
+    ?assertEqual(Expected, Actual, {expected_prop_with_key, Key, and_value, Value}).
 
 % Add to commit comment
 % This is from f8e3ccfadaef667e39934d38e8f2e6e49a978a78
