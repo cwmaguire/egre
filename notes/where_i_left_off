@@ -2,6 +2,31 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2024-03-21   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+I need to test:
+- resend
+  - A rule might send the message back to its owner,
+    character, or part of the message.
+    e.g. when simply swapping an object's name for its pid.
+
+    {Character, grab, axe}
+
+    resend as {Character, grab, self()}
+
+    I couldn't remember what I was using 'resend' for so I wasn't
+    sure what to test.
+
+    Basically, you've modified the message and it needs to start
+    back from some logical place. You could send it back any object
+    in the same limited region as the original sender and it will
+    eventually make its way back there, but it might be more efficient
+    to start from the origin, as any other potentially related objects
+    might be close to there, so the resends will happen faster.
+
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2024-03-20   ┃
 ┗━━━━━━━━━━━━━━━━┛
 
@@ -22,7 +47,7 @@ I need to test:
     - not to char
     - not to body part
     - not to top item
-  - not to self ({pid, Self})
+  - not to self (pid, Self)
 - merge
   - This is tested by testing chained objects, I think
 - handle
