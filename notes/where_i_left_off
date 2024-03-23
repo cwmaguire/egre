@@ -2,6 +2,42 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2024-03-22   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+I need to test:
+- stop
+  - should stop child items
+  - should stop child body parts
+    - this might not be implemented because procs/1 might not return it
+      - Ah, procs/1 looks through all the objects properties and returns
+        anything that's a pid; however, child body parts might not be
+        handled in any of the property clauses.
+
+The MUD might need to provide a function that says which properties are
+pids.
+
+  The object could have some properties, provided by the MUD implementation,
+  that handle:
+  - what properties should be stopped
+  - what properties should be broadcast to
+
+A general purpose rules engine shouldn't have anything but defaults for
+these things. A sane for stopping and broadcasting is every property that
+is a {_, pid} tuple.
+
+Does *every* object need to have a property for this?
+Where else could I put it?
+
+  Well, every object could provide a module, instead of a function.
+
+  If it's a module, the module has to export the agreed-upon functions.
+  i.e. the object has to be able to "find" the necessary function.
+
+  If it's a function, then EGRE doesn't have to "find" anything, it can
+  use the function directly.
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2024-03-21   ┃
 ┗━━━━━━━━━━━━━━━━┛
 
@@ -25,6 +61,22 @@ I need to test:
     to start from the origin, as any other potentially related objects
     might be close to there, so the resends will happen faster.
 
+I put this in a chat and figured I'd save it:
+
+  This is the main way for objects in the graph to communicate: construct messages
+  that "ask questions" by triggering a resend with an updated message.
+  e.g.
+  {Character, go, north}  ... from where? The Character's room might resend it as:
+  {Character, go, north, from, CurrRoom} ... what is north? The room to the north of CurrRoom might see this message and resend it as:
+  {Character, go, NorthRoom, from, CurrRoom} ... and now all the questions are answered and this final message will trigger movement logic.
+  Is it efficient to go out on a fishing expedition over and over to get all the
+  details? NO.
+  However, this is about answering the question of "Can we build a MUD with no
+  central management?", not "Is this an optimal solution?"
+
+  Is it a dumb idea? Sure, maybe.
+  Is it any worse than sudoku? Well, yeah, maybe, because it's adding
+  unnecessary code to Github, but I'm enjoying it.
 
 ┏━━━━━━━━━━━━━━━━┓
 ┃   2024-03-20   ┃
