@@ -401,26 +401,10 @@ handle(succeed, Msg, Procs = #procs{subs = Subs}, _Props) ->
             [send(Sub, {succeed, Msg}, Procs) || Sub <- Subs]
     end;
 handle({broadcast, Msg}, _Msg, _Procs, Props) ->
-    %TODO have the handler that returned this also
-    %return a filter; other handlers might not want
-    %to only broadcast "down".
-    Self = pid,
-    NotSelfOrParents = [Prop || Prop = {Key, _} <- Props,
-                          Key /= owner,
-                          Key /= character,
-                          Key /= body_part,
-                          Key /= top_item,
-                          Key /= Self],
-    [broadcast(Proc, Msg) || Proc <- procs(NotSelfOrParents)];
+    [broadcast(Pid, Msg) || Pid <- pids(Props, broadcast_pid_filter)];
 % XXX what's this used by?
 handle(stop, _Msg, _Procs, Props) ->
-    NotParents = [Prop || Prop = {Key, _} <- Props,
-                          Key /= owner,
-                          Key /= character,
-                          Key /= body_part,
-                          Key /= top_item],
-    NotSelf = pid,
-    [broadcast(Proc, stop) || Proc <- procs([NotSelf | NotParents])],
+    [broadcast(Proc, stop) || Proc <- pids(Props, stop_pid_filter)],
     stop.
 
 broadcast(Pid, Msg) ->
@@ -455,18 +439,14 @@ maybe_proc(MaybeId, IdPids) when is_atom(MaybeId) ->
 maybe_proc(Value, _) ->
     Value.
 
-% TODO Does this handle {K, {PID, bodypart}} properties?
-% 2019-02-19
-procs(Props) ->
-    lists:foldl(fun({_, Pid}, Acc) when is_pid(Pid) ->
-                    [Pid | Acc];
-                   ({_, Pids = [Pid | _]}, Acc) when is_pid(Pid) ->
-                    Acc ++ Pids;
-                   ({item, {ItemPid, Ref}}, Acc) when is_pid(ItemPid), is_reference(Ref) ->
-                    [ItemPid | Acc];
-                   (_NotPidProperty, Acc) ->
-                    Acc
-                end, [], Props).
+pids(Props, PidFilterKey) ->
+    PidFilterFun = proplists:get_value(PidFilterKey, Props, fun default_pid_filter/1),
+    lists:filtermap(PidFilterFun, Props).
+
+default_pid_filter({_, Pid}) when is_pid(Pid) ->
+    {true, Pid};
+default_pid_filter(_) ->
+    false.
 
 merge(_, _, {{resend, _, _, _}, _, _, _, _}, _) ->
     undefined;
@@ -487,7 +467,7 @@ merge(Self,
       Procs = #procs{}) ->
     merge_(Self,
            sub(Procs, ShouldSubscribe),
-           procs(Props)).
+           pids(Props, graph_pid_filter)).
 
 merge_(Self, Procs, NewProcs) ->
     Done = done(Self, Procs#procs.done),

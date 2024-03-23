@@ -134,6 +134,9 @@ flatten_key([A1, A2]) when is_atom(A1), is_atom(A2) ->
     B1 = atom_to_binary(A1, utf8),
     B2 = atom_to_binary(A2, utf8),
     <<B1/binary, "_", B2/binary>>;
+%flatten_key([Atom, Fun]) when is_atom(Atom), is_function(Fun) ->
+%    Bin = atom_to_binary(Atom, utf8),
+%    <<Bin/binary, "_Fun">>;
 flatten_key(Other) ->
     Other.
 
@@ -153,6 +156,8 @@ json_friendly(Ref) when is_reference(Ref) ->
     ref2b(Ref);
 json_friendly(Pid) when is_pid(Pid) ->
     p2b(Pid);
+json_friendly(Fun) when is_function(Fun) ->
+    <<"fun">>;
 json_friendly(Any) ->
     Any.
 

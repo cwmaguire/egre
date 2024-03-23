@@ -291,65 +291,46 @@ second_order_sub(_Config) ->
     ?assertEqual(Expected4, Result4).
 
 broadcast(_Config) ->
-    OwnerId = random_atom(),
-    CharId = random_atom(),
-    BodyPartId = random_atom(),
-    TopItemId = random_atom(),
-    MainId = random_atom(),
-    Child1Id = random_atom(),
-    Child2Id = random_atom(),
-    GrandchildId = random_atom(),
-    UnrelatedId = random_atom(),
-    OtherParentId = random_atom(),
+    ValidObject1Id = random_atom(),
+    ValidObject2Id = random_atom(),
+    InvalidObjectId = random_atom(),
 
-    ParentIdProps = [{Id, []} || Id <- [OwnerId, CharId, BodyPartId, TopItemId]],
-    ParentIdPids = start(ParentIdProps),
+    BroadcastFilterFun =
+        fun({yes_broadcast_pid, Pid}) when is_pid(Pid) ->
+                {true, Pid};
+           (_Prop) ->
+                false
+        end,
 
-    MainObjectProps = [{handlers, [rules_broadcast_test]},
-                       {name, main},
-                       {owner, OwnerId},
-                       {character, CharId},
-                       {body_part, BodyPartId},
-                       {top_item, TopItemId},
-                       {child, Child1Id},
-                       {child, Child2Id}],
-    [{_MainId, MainPid}] = start([{MainId, MainObjectProps}]),
+    V1Props = [{handlers, [rules_broadcast_test]},
+               {name, v1},
+               {broadcast_pid_filter, BroadcastFilterFun},
+               {yes_broadcast_pid, ValidObject2Id},
+               {no_broadcast_pid, InvalidObjectId}],
 
-    ChildProps = [{handlers, [rules_sub_test]}],
-    [{_Child1Id, Child1Pid}] = start([{Child1Id, [{name, child1} | ChildProps]}]),
+    [{V1Id, V1Pid}] = start([{ValidObject1Id, V1Props}]),
 
-    [{_OtherId, OtherParentPid}] = start([{OtherParentId, [{name, other} | ChildProps]}]),
+    V2Props = [{handlers, [rules_sub_test]},
+               {name, v2}],
 
-    Child2Props = [{name, child2},
-                   {child, GrandchildId},
-                   {owner, OtherParentId} | ChildProps],
-    [{_Child2Id, Child2Pid}] = start([{Child2Id, Child2Props}]),
+    [{V2Id, V2Pid}] = start([{ValidObject2Id, V2Props}]),
 
-    GrandchildProps = [{name, grandchild},
-                       {owner, Child2Id} | ChildProps],
-    [{_GrandchildId, GrandchildPid}] = start([{GrandchildId, GrandchildProps}]),
-    [{_UnId, UnrelatedPid}] = start([{UnrelatedId, [{name, unrelated} | ChildProps]}]),
+    InvalidProps = [{handlers, [rules_sub_test]}],
+    [{InvId, InvPid}] = start([{InvalidObjectId, InvalidProps}]),
 
-    IdPids = [{MainId, MainPid},
-              {Child1Id, Child1Pid},
-              {Child2Id, Child2Pid},
-              {GrandchildId, GrandchildPid},
-              {UnrelatedId, UnrelatedPid},
-              {OtherParentId, OtherParentPid} | ParentIdPids],
+    IdPids = [{V1Id, V1Pid},
+              {V2Id, V2Pid},
+              {InvId, InvPid}],
 
     [egre_object:populate(Pid, IdPids) || {_Id, Pid} <- IdPids],
 
     ?WAIT100,
-    egre_object:attempt_after(0, MainPid, {succeed, sub}, _Sub = false),
-    receive after 600 -> ok end,
+    egre_object:attempt_after(0, V1Pid, {succeed, sub}, _Sub = false),
+    receive after 200 -> ok end,
 
-    assertProp(MainPid, sub, undefined),
-
-    NonParentPids = [Child1Pid, Child2Pid, GrandchildPid],
-    [assertProp(Pid, sub, true) || Pid <- NonParentPids],
-
-    [assertProp(Pid, sub, undefined) || {_Id, Pid} <- ParentIdPids],
-    [assertProp(Pid, sub, undefined) || {_Id, Pid} <- [UnrelatedPid, OtherParentPid]].
+    assertProp(V1Pid, sub, undefined, ?LINE),
+    assertProp(V2Pid, sub, true, ?LINE),
+    assertProp(InvPid, sub, undefined, ?LINE).
 
 resend(_Config) ->
     Id = random_atom(),
@@ -359,9 +340,9 @@ resend(_Config) ->
     ?WAIT100,
     egre_object:attempt_after(0, Pid, {resend}, _Sub = false),
     ?WAIT100,
-    assertProp(Pid, resent, true),
-    assertProp(Pid, received, true),
-    assertProp(Pid, sub, true).
+    assertProp(Pid, resent, true, ?LINE),
+    assertProp(Pid, received, true, ?LINE),
+    assertProp(Pid, sub, true, ?LINE).
 
 %%
 %% END TESTS
@@ -479,13 +460,13 @@ assert_ct_test_process_mailbox_empty() ->
             ok
     end.
 
-assertProp(Pid, Key, Value) ->
+assertProp(Pid, Key, Value, Line) ->
     Props = egre_object:props(Pid),
     %ct:pal("~p:~p: Pid ~p: Expecting {~p, ~p}, got Props~n\t~p~n",
     %       [?MODULE, ?FUNCTION_NAME, Pid, Key, Value, Props]),
     Expected = Value,
     Actual = proplists:get_value(Key, Props),
-    ?assertEqual(Expected, Actual, {expected_prop_with_key, Key, and_value, Value}).
+    ?assertEqual(Expected, Actual, {expected_prop_with_key, Key, and_value, Value, on_line, Line}).
 
 % Add to commit comment
 % This is from f8e3ccfadaef667e39934d38e8f2e6e49a978a78
