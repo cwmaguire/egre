@@ -20,7 +20,8 @@ all() ->
      set,
      populate,
      broadcast,
-     resend].
+     resend,
+     stop].
 
 init_per_suite(Config) ->
     %egre_dbg:add(egre_object, handle_cast_),
@@ -343,6 +344,20 @@ resend(_Config) ->
     assertProp(Pid, resent, true, ?LINE),
     assertProp(Pid, received, true, ?LINE),
     assertProp(Pid, sub, true, ?LINE).
+
+stop(_Config) ->
+    Id = random_atom(),
+
+    Props = [{handlers, [rules_stop_test]},
+               {name, v1}],
+
+    [{_Id, Pid}] = start([{Id, Props}]),
+
+    ?WAIT100,
+    egre_object:attempt_after(0, Pid, {stop}, _Sub = false),
+    receive after 200 -> ok end,
+
+    ?assertNot(erlang:is_process_alive(Pid)).
 
 %%
 %% END TESTS
