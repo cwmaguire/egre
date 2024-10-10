@@ -14,7 +14,7 @@
     %dbg:p(all, [call]).
 
 stop() ->
-    dbg:stop_clear().
+    dbg:stop().
 
 add(Module) ->
     add(Module, '_').
