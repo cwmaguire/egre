@@ -453,14 +453,9 @@ revive_process(_Config) ->
     ?assertMatch(PlayerV2, val(owner, p_stamina)).
 
 start(Objects) ->
-    IdPids = [{Id, start_obj(Id, Props)} || {Id, Props} <- Objects],
-    [egre_object:populate(Pid, IdPids) || {_, Pid} <- IdPids],
+    IdPids = egre:create_graph(Objects),
     timer:sleep(100),
     IdPids.
-
-start_obj(Id, Props) ->
-    {ok, Pid} = supervisor:start_child(egre_object_sup, [Id, Props]),
-    Pid.
 
 attempt(Config, Target, Message) ->
     TestObject = proplists:get_value(test_object, Config),

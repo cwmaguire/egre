@@ -1,7 +1,13 @@
 %% Copyright 2022, Chris Maguire <cwmaguire@protonmail.com>
 -module(egre).
 
--export([create/2]).
+-export([create_graph/1]).
 
-create(Type, Props) ->
-    egre_object:start_link('TODO_add_object_id', Type, Type:create(Props)).
+create_graph(Objects) ->
+    IdPids = [{Id, start_obj(Id, Props)} || {Id, Props} <- Objects],
+    [egre_object:populate(Pid, IdPids) || {_, Pid} <- IdPids],
+    IdPids.
+
+start_obj(Id, Props) ->
+    {ok, Pid} = supervisor:start_child(egre_object_sup, [Id, Props]),
+    Pid.
