@@ -285,7 +285,7 @@ attempt_(Msg,
          Procs,
          State = #state{props = Props}) ->
     {Parents, ParentsList} = parents(Props),
-    {Handler,
+    {RulesModule,
      Results = {Result,
                 Msg2,
                 ShouldSubscribe,
@@ -297,7 +297,7 @@ attempt_(Msg,
     log([{stage, attempt},
          {object, self()},
          {message, Msg},
-         {handler, Handler},
+         {rules_module, RulesModule},
          {subscribe, ShouldSubscribe},
          {room, Procs#procs.room} |
          Props2] ++
@@ -357,20 +357,20 @@ result_tuples(stop) ->
     [{result, stop}].
 
 run_rules(Attempt = {_, Props, _}) ->
-    Rules = proplists:get_value(rules, Props),
-    handle_attempt(Rules, Attempt).
+    RulesModules = proplists:get_value(rules, Props),
+    handle_attempt(RulesModules, Attempt).
 
 handle_attempt([], {_, Props, _}) ->
     _DefaultResponse = {no_handler, {succeed, false, Props}};
-handle_attempt([Rule | Rules], Attempt) ->
+handle_attempt([RulesModule | RulesModules], Attempt) ->
     %{_, Props, _} = Attempt,
     %Name = proplists:get_value(name, Props, "___"),
-    %log([Name, self(), <<" running handler ">>, Handler]),
-    case Rule:attempt(Attempt) of
+    %log([Name, self(), <<" running rules ">>, Rules]),
+    case RulesModule:attempt(Attempt) of
         undefined ->
-            handle_attempt(Rules, Attempt);
+            handle_attempt(RulesModules, Attempt);
         Result ->
-            {Rule, Result}
+            {RulesModule, Result}
     end.
 
 ensure_message(Msg, {Handler, {Result, Sub, Props}})
