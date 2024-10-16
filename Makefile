@@ -1,5 +1,5 @@
 PROJECT = egre
-COMPILE_FIRST = egre_object egre_handler
+COMPILE_FIRST = egre_object egre_rules
 DEPS = jsx
 
 ## copied from erlang.mk and added +native.

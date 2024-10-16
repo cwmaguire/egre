@@ -103,7 +103,7 @@ start_object(_Config) ->
 
 attempt_sub(_Config) ->
     Props = [{should_change_to_true, false},
-             {handlers, [rules_attempt_test]}],
+             {rules, [rules_attempt_test]}],
     [{_Id, Pid}] = start([{undefined, Props}]),
     ?WAIT100,
     egre_object:attempt_after(0, Pid, {any_message_will_do, sub}),
@@ -115,7 +115,7 @@ attempt_sub(_Config) ->
 
 attempt_nosub(_Config) ->
     Props = [{should_change_to_true, false},
-             {handlers, [rules_attempt_test]}],
+             {rules, [rules_attempt_test]}],
     [{_Id, Pid}] = start([{undefined, Props}]),
     ?WAIT100,
     egre_object:attempt_after(0, Pid, {any_message_will_do, nosub}, _ShouldSub = false),
@@ -127,7 +127,7 @@ attempt_nosub(_Config) ->
 
 attempt_after(_Config) ->
     Props = [{should_change_to_true, false},
-             {handlers, [rules_attempt_test]}],
+             {rules, [rules_attempt_test]}],
     [{_Id, Pid}] = start([{undefined, Props}]),
     ?WAIT100,
     egre_object:attempt_after(700, Pid, {any_message_will_do, nosub}, _ShouldSub = false),
@@ -146,7 +146,7 @@ attempt_after(_Config) ->
 
 
 succeed_sub(_Config) ->
-    Props = [{handlers, [rules_sub_test]}],
+    Props = [{rules, [rules_sub_test]}],
     [{_Id, Pid}] = start([{undefined, Props}]),
     ?WAIT100,
     egre_object:attempt_after(0, Pid, {succeed, sub}, _ShouldSub = false),
@@ -157,7 +157,7 @@ succeed_sub(_Config) ->
     ?assertEqual(Expected, Result).
 
 succeed_nosub(_Config) ->
-    Props = [{handlers, [rules_sub_test]}],
+    Props = [{rules, [rules_sub_test]}],
     [{_Id, Pid}] = start([{undefined, Props}]),
     ?WAIT100,
     egre_object:attempt_after(0, Pid, {succeed, no_sub}, _ShouldSub = false),
@@ -168,7 +168,7 @@ succeed_nosub(_Config) ->
     ?assertEqual(Expected, Result).
 
 fail_sub(_Config) ->
-    Props = [{handlers, [rules_sub_test]}],
+    Props = [{rules, [rules_sub_test]}],
     [{_Id, Pid}] = start([{undefined, Props}]),
     ?WAIT100,
     egre_object:attempt_after(0, Pid, {fail, sub}, _ShouldSub = false),
@@ -179,7 +179,7 @@ fail_sub(_Config) ->
     ?assertEqual(Expected, Result).
 
 fail_nosub(_Config) ->
-    Props = [{handlers, [rules_sub_test]}],
+    Props = [{rules, [rules_sub_test]}],
     [{_Id, Pid}] = start([{undefined, Props}]),
     ?WAIT100,
     egre_object:attempt_after(0, Pid, {fail, no_sub}, _ShouldSub = false),
@@ -239,11 +239,11 @@ second_order_sub(_Config) ->
     Id2 = random_atom(),
 
     Props1 = [{should_stay_false, false},
-              {handlers, [rules_passthrough_test]},
+              {rules, [rules_passthrough_test]},
               {object2, Id2}],
     [{_Id1, Pid1}] = start([{Id1, Props1}]),
 
-    Props2 = [{handlers, [rules_sub_test]}],
+    Props2 = [{rules, [rules_sub_test]}],
     [{_Id2, Pid2}] = start([{Id2, Props2}]),
 
     IdPids = [{Id1, Pid1}, {Id2, Pid2}],
@@ -303,7 +303,7 @@ broadcast(_Config) ->
                 false
         end,
 
-    V1Props = [{handlers, [rules_broadcast_test]},
+    V1Props = [{rules, [rules_broadcast_test]},
                {name, v1},
                {broadcast_pid_filter, BroadcastFilterFun},
                {yes_broadcast_pid, ValidObject2Id},
@@ -311,12 +311,12 @@ broadcast(_Config) ->
 
     [{V1Id, V1Pid}] = start([{ValidObject1Id, V1Props}]),
 
-    V2Props = [{handlers, [rules_sub_test]},
+    V2Props = [{rules, [rules_sub_test]},
                {name, v2}],
 
     [{V2Id, V2Pid}] = start([{ValidObject2Id, V2Props}]),
 
-    InvalidProps = [{handlers, [rules_sub_test]}],
+    InvalidProps = [{rules, [rules_sub_test]}],
     [{InvId, InvPid}] = start([{InvalidObjectId, InvalidProps}]),
 
     IdPids = [{V1Id, V1Pid},
@@ -335,7 +335,7 @@ broadcast(_Config) ->
 
 resend(_Config) ->
     Id = random_atom(),
-    Props = [{handlers, [rules_resend_test]}],
+    Props = [{rules, [rules_resend_test]}],
     [{_Id, Pid}] = start([{Id, Props}]),
 
     ?WAIT100,
@@ -348,7 +348,7 @@ resend(_Config) ->
 stop(_Config) ->
     Id = random_atom(),
 
-    Props = [{handlers, [rules_stop_test]},
+    Props = [{rules, [rules_stop_test]},
                {name, v1}],
 
     [{_Id, Pid}] = start([{Id, Props}]),

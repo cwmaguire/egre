@@ -1,6 +1,6 @@
 -module(rules_attempt_test).
 
--behaviour(egre_handler).
+-behaviour(egre_rules).
 
 -export([attempt/1]).
 -export([succeed/1]).

@@ -361,7 +361,7 @@ run_rules(Attempt = {_, Props, _}) ->
     handle_attempt(RulesModules, Attempt).
 
 handle_attempt([], {_, Props, _}) ->
-    _DefaultResponse = {no_handler, {succeed, false, Props}};
+    _DefaultResponse = {no_rules_module, {succeed, false, Props}};
 handle_attempt([RulesModule | RulesModules], Attempt) ->
     %{_, Props, _} = Attempt,
     %Name = proplists:get_value(name, Props, "___"),
@@ -373,12 +373,12 @@ handle_attempt([RulesModule | RulesModules], Attempt) ->
             {RulesModule, Result}
     end.
 
-ensure_message(Msg, {Handler, {Result, Sub, Props}})
+ensure_message(Msg, {RulesModule, {Result, Sub, Props}})
   when is_atom(Sub), is_list(Props) ->
-    {Handler, {Result, Msg, Sub, Props}};
-ensure_message(Msg, {Handler, {Result, Sub, Props, Log}})
+    {RulesModule, {Result, Msg, Sub, Props}};
+ensure_message(Msg, {RulesModule, {Result, Sub, Props, Log}})
   when is_atom(Sub), is_list(Props), is_list(Log) ->
-    {Handler, {Result, Msg, Sub, Props, Log}};
+    {RulesModule, {Result, Msg, Sub, Props, Log}};
 ensure_message(_, T) ->
     T.
 
