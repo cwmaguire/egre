@@ -366,11 +366,11 @@ handle_attempt([Rule | Rules], Attempt) ->
     %{_, Props, _} = Attempt,
     %Name = proplists:get_value(name, Props, "___"),
     %log([Name, self(), <<" running handler ">>, Handler]),
-    case Handler:attempt(Attempt) of
+    case Rule:attempt(Attempt) of
         undefined ->
             handle_attempt(Rules, Attempt);
         Result ->
-            {Handler, Result}
+            {Rule, Result}
     end.
 
 ensure_message(Msg, {Handler, {Result, Sub, Props}})
