@@ -293,7 +293,7 @@ attempt_(Msg,
                 LogProps}}
       = ensure_log_props(
           ensure_message(Msg,
-                         run_handlers({Parents, Props, Msg}))),
+                         run_rules({Parents, Props, Msg}))),
     log([{stage, attempt},
          {object, self()},
          {message, Msg},
@@ -356,19 +356,19 @@ result_tuples({broadcast, Message}) ->
 result_tuples(stop) ->
     [{result, stop}].
 
-run_handlers(Attempt = {_, Props, _}) ->
-    Handlers = proplists:get_value(handlers, Props),
-    handle_attempt(Handlers, Attempt).
+run_rules(Attempt = {_, Props, _}) ->
+    Rules = proplists:get_value(rules, Props),
+    handle_attempt(Rules, Attempt).
 
 handle_attempt([], {_, Props, _}) ->
     _DefaultResponse = {no_handler, {succeed, false, Props}};
-handle_attempt([Handler | Handlers], Attempt) ->
+handle_attempt([Rule | Rules], Attempt) ->
     %{_, Props, _} = Attempt,
     %Name = proplists:get_value(name, Props, "___"),
     %log([Name, self(), <<" running handler ">>, Handler]),
     case Handler:attempt(Attempt) of
         undefined ->
-            handle_attempt(Handlers, Attempt);
+            handle_attempt(Rules, Attempt);
         Result ->
             {Handler, Result}
     end.
@@ -497,21 +497,21 @@ next(Procs = #procs{next = NextSet}) ->
     end.
 
 succeed(Message, #state{props = Props}) ->
-    Handlers = proplists:get_value(handlers, Props),
-    handle_success(Handlers, {Props, [], Message}).
+    Rules = proplists:get_value(rules, Props),
+    handle_success(Rules, {Props, [], Message}).
 
-handle_success(_NoMoreHandlers = [], {Props, LogProps, _Message}) ->
+handle_success(_NoMoreRules = [], {Props, LogProps, _Message}) ->
     {Props, LogProps};
-handle_success([Handler | Handlers], {Props, LogProps, Message}) ->
+handle_success([Handler | Rules], {Props, LogProps, Message}) ->
     case Handler:succeed({Props, Message}) of
         {stop, Reason, Props2, LogProps2} ->
             MergedLogProps = merge_log_props(LogProps, LogProps2),
             {stop, Reason, Props2, MergedLogProps};
         {Props2, LogProps2} ->
             MergedLogProps = merge_log_props(LogProps, LogProps2),
-            handle_success(Handlers, {Props2, MergedLogProps, Message});
+            handle_success(Rules, {Props2, MergedLogProps, Message});
         Props2 ->
-            handle_success(Handlers, {Props2, LogProps, Message})
+            handle_success(Rules, {Props2, LogProps, Message})
     end.
 
 merge_log_props(Logs1, Logs2) ->
@@ -519,11 +519,10 @@ merge_log_props(Logs1, Logs2) ->
                    lists:keysort(1, Logs1),
                    lists:keysort(1, Logs2)).
 
-
 fail(Reason, Message, #state{props = Props}) ->
-    Handlers = proplists:get_value(handlers, Props),
+    Rules = proplists:get_value(rules, Props),
     Acc = {Props, Reason, Message, _LogProps = []},
-    lists:foldl(fun handle_fail/2, Acc, Handlers).
+    lists:foldl(fun handle_fail/2, Acc, Rules).
 
 handle_fail(_, Response = {stop, _Props, _LogProps}) ->
     Response;
