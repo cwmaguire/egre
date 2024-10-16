@@ -3,6 +3,13 @@ EGRE - Erlang Graph Rules Engine
 EGRE has been split off from GERLSHMUD; GERLSHMUD is a MUD built in
 Erlang with a graph rules engine. EGRE is that rules engine.
 
+```mermaid
+flowchart TD
+    em1["egre_mud_1"] --> em["egre_mud"]
+    etd["egre_tower_defence"] --> ea["egre_arcade"]
+    em & ea --> e["egre"]
+```
+
 The original goal of GERLSHMUD, then called erlmud (which conflicted with zxq9's
 MUD of the same name), was to create a MUD where every element of the MUD was an
 independent process running concurrently with all other processes. That is,
