@@ -22,7 +22,7 @@ parse_transform(Forms, _Options) ->
     Forms.
 
 module([{attribute, _Line, module, Module} | _]) ->
-    remove_prefix(<<"egre_handler_">>, a2b(Module));
+    remove_prefix(<<"rules_">>, a2b(Module));
 module([_ | Forms]) ->
     module(Forms);
 module(_) ->
