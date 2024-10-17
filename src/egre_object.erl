@@ -445,6 +445,8 @@ pids(Props, PidFilterKey) ->
 
 default_pid_filter({_, Pid}) when is_pid(Pid) ->
     {true, Pid};
+default_pid_filter({_, {Pid, Ref}}) when is_pid(Pid), is_reference(Ref) ->
+    {true, Pid};
 default_pid_filter(_) ->
     false.
 
