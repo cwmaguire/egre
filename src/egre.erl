@@ -10,13 +10,18 @@
 -export([attempt/2]).
 
 create_graph(Objects) ->
-    IdPids = [{Id, start_obj(Id, Props)} || {Id, Props} <- Objects],
+    IdPids = [{Id, start_object(Id, Props)} || {Id, Props} <- Objects],
     [egre_object:populate(Pid, IdPids) || {_, Pid} <- IdPids],
     IdPids.
 
 -spec start_object(proplist()) -> pid().
 start_object(Properties) ->
-    supervisor:start_child(egre_object_sup, [_Id = undefined, Properties]).
+    start_object(_Id = undefined, Properties).
+
+-spec start_object(atom(), proplist()) -> pid().
+start_object(Id, Props) ->
+    {ok, Pid} = supervisor:start_child(egre_object_sup, [Id, Props]),
+    Pid.
 
 -spec get_object(pid()) -> #object{}.
 get_object(Pid) ->
@@ -29,7 +34,3 @@ get_object_pid(Id) ->
 -spec attempt(pid(), tuple()) -> any().
 attempt(ObjectPid, Event) ->
     egre_object:attempt(ObjectPid, Event).
-
-start_obj(Id, Props) ->
-    {ok, Pid} = supervisor:start_child(egre_object_sup, [Id, Props]),
-    Pid.
