@@ -67,7 +67,7 @@ start_link(MaybeId, OriginalProps) ->
     {ok, Pid}.
 
 id(_Id = undefined) ->
-    binary_to_list(crypto:strong_rand_bytes(20));
+    binary_to_list(<< <<(X rem 96 + 31)>> || <<X>> <= crypto:strong_rand_bytes(20)>>);
 id(Id) ->
     Id.
 
