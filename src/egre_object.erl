@@ -304,7 +304,11 @@ attempt_(Msg,
          ParentsList ++
          LogProps ++
          result_tuples(Result)),
+    %ct:pal("~p:~p: PREMERGE: Self = ~p; Msg = ~p; Procs~n\t~p~nResult: ~p~n",
+           %[?MODULE, ?FUNCTION_NAME, self(), Msg, Procs, Result]),
     MergedProcs = merge(self(), is_room(Props), Results, Procs),
+    %ct:pal("~p:~p: Self = ~p; Msg = ~p; MergedProcs~n\t~p~n",
+           %[?MODULE, ?FUNCTION_NAME, self(), Msg, MergedProcs]),
     State2 = State#state{props = Props2},
     case handle(Result, Msg2, MergedProcs, Props2) of
         stop ->

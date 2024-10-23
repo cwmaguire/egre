@@ -8,6 +8,7 @@
 -export([get_object_pid/1]).
 -export([start_object/1]).
 -export([attempt/2]).
+-export([attempt/3]).
 
 create_graph(Objects) ->
     IdPids = [{Id, start_object(Id, Props)} || {Id, Props} <- Objects],
@@ -33,4 +34,7 @@ get_object_pid(Id) ->
 
 -spec attempt(pid(), tuple()) -> any().
 attempt(ObjectPid, Event) ->
-    egre_object:attempt(ObjectPid, Event).
+    attempt(ObjectPid, Event, true).
+
+attempt(ObjectPid, Event, ShouldSubscribe) ->
+    egre_object:attempt(ObjectPid, Event, ShouldSubscribe).
