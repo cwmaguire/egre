@@ -150,6 +150,10 @@ json_friendly(List) when is_list(List) ->
 json_friendly(Timestamp = {Meg, Sec, Mic})
   when is_integer(Meg), is_integer(Sec), is_integer(Mic)  ->
     ts2b(Timestamp);
+json_friendly(BodyPart = #body_part{}) ->
+    body_part_to_binary(BodyPart);
+json_friendly(TopItem = #top_item{}) ->
+    top_item_to_binary(TopItem);
 json_friendly(Tuple) when is_tuple(Tuple) ->
     json_friendly(tuple_to_list(Tuple));
 json_friendly(Ref) when is_reference(Ref) ->
@@ -213,3 +217,26 @@ ts2b({Meg, Sec, Mic}) ->
     SecBin = i2b(Sec),
     MicBin = i2b(Mic),
     <<"{", MegBin/binary, ",", SecBin/binary, ",", MicBin/binary, "}">>.
+
+body_part_to_binary(#body_part{body_part = BodyPart, type = Type, ref = Ref}) ->
+    [<<"#body_part{bp = ">>,
+     json_friendly(BodyPart),
+     <<", type = ">>,
+     json_friendly(Type),
+     <<", ref = ">>,
+     json_friendly(Ref),
+     <<"}">>].
+
+top_item_to_binary(#top_item{item = Item,
+                             is_active = IsActive,
+                             is_wielded = IsWielded,
+                             ref = Ref}) ->
+    [<<"#top_item{item = ">>,
+     json_friendly(Item),
+     <<", active? = ">>,
+     json_friendly(IsActive),
+     <<", wielded? = ">>,
+     json_friendly(IsWielded),
+     <<", ref = ">>,
+     json_friendly(Ref),
+     <<"}">>].
