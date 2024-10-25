@@ -161,7 +161,7 @@ json_friendly(Ref) when is_reference(Ref) ->
 json_friendly(Pid) when is_pid(Pid) ->
     p2b(Pid);
 json_friendly(Fun) when is_function(Fun) ->
-    <<"fun">>;
+    f2b(Fun);
 json_friendly(Any) ->
     Any.
 
@@ -217,6 +217,14 @@ ts2b({Meg, Sec, Mic}) ->
     SecBin = i2b(Sec),
     MicBin = i2b(Mic),
     <<"{", MegBin/binary, ",", SecBin/binary, ",", MicBin/binary, "}">>.
+
+f2b(Fun) ->
+  [{module, M}, {name, F}, {arity, A} | _] = erlang:fun_info(Fun),
+  io:format(user, "A = ~p~n", [A]),
+  io:format(user, "i2b(A) = ~p~n", [i2b(A)]),
+  <<(atom_to_binary(M))/binary, ":",
+    (atom_to_binary(F))/binary, "/",
+    (i2b(A))/binary>>.
 
 body_part_to_binary(#body_part{body_part = BodyPart, type = Type, ref = Ref}) ->
     [<<"#body_part{bp = ">>,
