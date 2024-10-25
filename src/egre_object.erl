@@ -159,7 +159,6 @@ handle_cast_({attempt, Msg, Procs}, State = #state{props = Props}) ->
             Continue
     end;
 handle_cast_({fail, Reason, Msg}, State) ->
-    ct:pal("~p:handle_cast_({fail ...~n", [?MODULE]),
     case fail(Reason, Msg, State) of
         {stop, Props, LogProps} ->
             {_, ParentsList} = parents(Props),
