@@ -27,7 +27,8 @@
 -export([terminate/2]).
 -export([code_change/3]).
 
--record(state, {props :: list(tuple())}).
+-record(state, {props :: list(tuple()),
+                extract_record_fun :: fun()}).
 
 -record(procs, {limit = undefined :: undefined | {atom(), integer(), atom()},
                 room = undefined :: pid(),
@@ -116,6 +117,7 @@ has_pid(Props, Pid) ->
 %% gen_server.
 
 init(Props) ->
+    {ok, {M, F, A}} = application:get_env(egre, extract_fun),
     Fun = fun() ->
                   process_flag(trap_exit, true),
                   receive
@@ -126,7 +128,8 @@ init(Props) ->
           end,
     spawn_link(Fun),
     process_flag(trap_exit, true),
-    {ok, #state{props = [{pid, self()} | Props]}}.
+    {ok, #state{props = [{pid, self()} | Props],
+                extract_record_fun = fun M:F/A}}.
 
 handle_call(props, _From, State) ->
     {reply, State#state.props, State};
@@ -158,41 +161,42 @@ handle_cast_({attempt, Msg, Procs}, State = #state{props = Props}) ->
             egre_index:put(Props2),
             Continue
     end;
-handle_cast_({fail, Reason, Msg}, State) ->
+handle_cast_({fail, Reason, Msg}, State = #state{extract_record_fun = ExtractRecordFun}) ->
     case fail(Reason, Msg, State) of
         {stop, Props, LogProps} ->
-            {_, ParentsList} = parents(Props),
+            {_, RecordProps} = ExtractRecordFun(Props),
             egre_index:put(Props),
             log([{stage, fail_stop},
                  {object, self()},
                  {owner, proplists:get_value(owner, Props)},
                  {message, Msg},
                  {stop_reason, Reason} |
-                 Props ++ ParentsList ++ LogProps]),
+                 Props ++ RecordProps ++ LogProps]),
             egre_index:put(Props),
             % FIXME I think this will just cause the supervisor to restart it
             % Probably need to tell the supervisor to kill us
             {stop, {shutdown, Reason}, State#state{props = Props}};
         {Props, _, _, LogProps} ->
-            {_, ParentsList} = parents(Props),
+            {_, RecordProps} = ExtractRecordFun(Props),
             log([{stage, fail},
                  {object, self()},
                  {message, Msg},
                  {stop_reason, Reason} |
-                 Props ++ ParentsList ++ LogProps]),
+                 Props ++ RecordProps ++ LogProps]),
             egre_index:put(Props),
             {noreply, State#state{props = Props}}
     end;
-handle_cast_({succeed, Msg}, State) ->
+handle_cast_({succeed, Msg},
+             State = #state{extract_record_fun = ExtractRecordFun}) ->
     case succeed(Msg, State) of
         {stop, Reason, Props, LogProps} ->
-            {_, ParentsList} = parents(Props),
+            {_, RecordProps} = ExtractRecordFun(Props),
             log([{stage, succeed},
                  {event, stop},
                  {object, self()},
                  {message, Msg},
                  {stop_reason, Reason} |
-                 Props ++ ParentsList ++ LogProps]),
+                 Props ++ RecordProps ++ LogProps]),
             egre_index:put(Props),
             Self = self(),
             spawn(fun() ->
@@ -203,23 +207,25 @@ handle_cast_({succeed, Msg}, State) ->
                   end),
             {noreply, State#state{props = Props}};
         {Props, LogProps} ->
-            {_, ParentsList} = parents(Props),
+            {_, RecordProps} = ExtractRecordFun(Props),
             log([{stage, succeed},
                  {object, self()},
                  {message, Msg} |
-                 Props ++ ParentsList ++ LogProps]),
+                 Props ++ RecordProps ++ LogProps]),
             egre_index:put(Props),
             {noreply, State#state{props = Props}}
     end.
 
-handle_info({'EXIT', From, Reason}, State = #state{props = Props}) ->
+handle_info({'EXIT', From, Reason},
+            State = #state{props = Props,
+                           extract_record_fun = ExtractRecordFun}) ->
     ct:pal("~p:handle_info({'EXIT', From: ~p, Reason: ~p}) - ~p~n", [?MODULE, From, Reason, self()]),
-    {_, ParentsList} = parents(Props),
+    {_, RecordProps} = ExtractRecordFun(Props),
     log([{?EVENT, exit},
          {object, self()},
          {source, From},
          {reason, Reason} |
-         Props ++ ParentsList]),
+         Props ++ RecordProps]),
     ?LOG_INFO("Process ~p died~n", [From]),
     egre_index:subscribe_dead(self(), From),
     Props2 = mark_pid_dead(From, Props),
@@ -235,20 +241,24 @@ handle_info({replace_pid, OldPid, NewPid}, State = #state{props = Props})
 handle_info({send_after, Pid, Msg, ShouldSub}, State) when is_pid(Pid) ->
     attempt(Pid, Msg, ShouldSub),
     {noreply, State};
-handle_info(Unknown, State = #state{props = Props}) ->
-    {_, ParentsList} = parents(Props),
+handle_info(Unknown,
+            State = #state{props = Props,
+                           extract_record_fun = ExtractRecordFun}) ->
+    {_, RecordProps} = ExtractRecordFun(Props),
     log([{?EVENT, unknown_message},
          {object, self()},
          {message, Unknown} |
-         Props ++ ParentsList]),
+         Props ++ RecordProps]),
     {noreply, State}.
 
-terminate(Reason, _State = #state{props = Props}) ->
-    {_, ParentsList} = parents(Props),
+terminate(Reason,
+          _State = #state{props = Props,
+                          extract_record_fun = ExtractRecordFun}) ->
+    {_, RecordProps} = ExtractRecordFun(Props),
     log([{?EVENT, shutdown},
          {object, self()},
          {reason, Reason} |
-         Props ++ ParentsList]),
+         Props ++ RecordProps]),
     egre_index:del(self()),
     ok.
 
@@ -282,8 +292,9 @@ exit_has_room(Props, Room) ->
 
 attempt_(Msg,
          Procs,
-         State = #state{props = Props}) ->
-    {Parents, ParentsList} = parents(Props),
+         State = #state{props = Props,
+                        extract_record_fun = ExtractRecordFun}) ->
+    {Record, RecordProps} = ExtractRecordFun(Props),
     {RulesModule,
      Results = {Result,
                 Msg2,
@@ -292,7 +303,7 @@ attempt_(Msg,
                 LogProps}}
       = ensure_log_props(
           ensure_message(Msg,
-                         run_rules({Parents, Props, Msg}))),
+                         run_rules({Record, Props, Msg}))),
     log([{stage, attempt},
          {object, self()},
          {message, Msg},
@@ -300,7 +311,7 @@ attempt_(Msg,
          {subscribe, ShouldSubscribe},
          {room, Procs#procs.room} |
          Props2] ++
-         ParentsList ++
+         RecordProps ++
          LogProps ++
          result_tuples(Result)),
     %ct:pal("~p:~p: PREMERGE: Self = ~p; Msg = ~p; Procs~n\t~p~nResult: ~p~n",
@@ -323,21 +334,6 @@ attempt_(Msg,
         _ ->
             {noreply, State2}
     end.
-
-parents(Props) ->
-    Owner = proplists:get_value(owner, Props),
-    Character = proplists:get_value(character, Props),
-    TopItem = proplists:get_value(top_item, Props),
-    BodyPart = proplists:get_value(body_part, Props),
-    Parents = #parents{owner = Owner,
-                       character = Character,
-                       top_item = TopItem,
-                       body_part = BodyPart},
-    {Parents,
-     [{owner, Owner},
-      {character, Character},
-      {top_item, TopItem},
-      {body_part, BodyPart}]}.
 
 is_room(Props) ->
     proplists:get_value(is_room, Props, false).
@@ -557,8 +553,8 @@ mark_pid_dead(Pid, Props) when is_list(Props) ->
     [mark_pid_dead(Pid, Prop) || Prop <- Props];
 mark_pid_dead(Pid, {K, Pid}) ->
     {K, {dead, Pid}};
-mark_pid_dead(Pid, {K, {Pid, BodyPart}}) ->
-    {K, {{dead, Pid}, BodyPart}};
+mark_pid_dead(Pid, {K, {Pid, Value}}) ->
+    {K, {{dead, Pid}, Value}};
 mark_pid_dead(_, KV) ->
     KV.
 
@@ -566,9 +562,9 @@ replace_pid(Props, OldPid, NewPid) when is_list(Props) ->
     [replace_pid(Prop, OldPid, NewPid) || Prop <- Props];
 replace_pid({K, {dead, OldPid}}, OldPid, NewPid) ->
     {K, NewPid};
-replace_pid({K, {{dead, OldPid}, BodyPart}}, OldPid, NewPid)
-  when is_atom(BodyPart) ->
-    {K, {NewPid, BodyPart}};
+replace_pid({K, {{dead, OldPid}, Value}}, OldPid, NewPid)
+  when is_atom(Value) ->
+    {K, {NewPid, Value}};
 replace_pid(Prop, _, _) ->
     Prop.
 
