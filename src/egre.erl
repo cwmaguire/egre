@@ -9,6 +9,7 @@
 -export([start_object/1]).
 -export([attempt/2]).
 -export([attempt/3]).
+-export([register_logger/2]).
 
 create_graph(Objects) ->
     IdPids = [{Id, start_object(Id, Props)} || {Id, Props} <- Objects],
@@ -38,3 +39,6 @@ attempt(ObjectPid, Event) ->
 
 attempt(ObjectPid, Event, ShouldSubscribe) ->
     egre_object:attempt(ObjectPid, Event, ShouldSubscribe).
+
+register_logger(json, Fun) ->
+    egre_event_log_json:register_logger(Fun).

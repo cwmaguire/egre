@@ -9,22 +9,18 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 init([]) ->
-    Procs = [{object_sup,
-              {egre_object_sup, start_link, []},
-              permanent,
-              brutal_kill,
-              supervisor,
-              [egre_object_sup]},
-             {egre_index,
-              {egre_index, start_link, []},
-              permanent,
-              brutal_kill,
-              worker,
-              [egre_index]},
-             {egre_event_log,
-              {egre_event_log, start_link, []},
-              permanent,
-              brutal_kill,
-              worker,
-              [egre_event_log]}],
-    {ok, {{one_for_one, 1, 5}, Procs}}.
+    Modules = [{super, {object_sup, egre_object_sup}},
+               {worker, egre_index},
+               {worker, egre_event_log},
+               {worker, egre_event_log_json},
+               {worker, egre_event_log_postgres},
+               {worker, egre_postgres}],
+    {ok, {{one_for_one, 1, 5}, procs(Modules)}}.
+
+procs(Modules) ->
+    lists:map(fun proc/1, Modules).
+
+proc({super, {Id, Mod}}) ->
+    {Id, {Mod, start_link, []}, permanent, brutal_kill, supervisor, [Mod]};
+proc({worker, Mod}) ->
+    {Mod, {Mod, start_link, []}, permanent, brutal_kill, worker, [Mod]}.

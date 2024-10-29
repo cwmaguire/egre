@@ -1,6 +1,6 @@
 PROJECT = egre
 COMPILE_FIRST = egre_object egre_rules
-DEPS = jsx
+DEPS = jsx epgsql
 
 ## copied from erlang.mk and added +native.
 ## It made one of the test faster when this was part of GERLSHMUD
