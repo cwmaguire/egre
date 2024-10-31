@@ -252,7 +252,7 @@ search({'try',_Line,Expressions,_WhatIsThis,CatchClauses,AfterExpressions}, Stat
 search({'fun',_Line,Body}, State) ->
     case Body of
         {clauses,Clauses} ->
-            Fun = fun(Clause) -> clause('', Clause) end,
+            Fun = fun(Clause, State_) -> clause('', Clause, State_) end,
             loop_with_state(Clauses, Fun, State);
         _ ->
             {[], State}
@@ -451,7 +451,9 @@ move_leading_underscore(Bin) ->
     Bin.
 
 loop_with_state(Forms, Fun, State) ->
+    io:format(user, "Forms = ~p~n", [Forms]),
     lists:foldl(fun(Form, {Exps, StateInner}) ->
+                    io:format(user, "Form = ~p~n", [Form]),
                     {Exp, StateAcc} = Fun(Form, StateInner),
                     {Exps ++ [Exp], StateAcc}
                 end,
