@@ -118,16 +118,19 @@ has_pid(Props, Pid) ->
 
 init(Props) ->
     {ok, {M, F, A}} = application:get_env(egre, extract_fun),
-    Fun = fun() ->
-                  process_flag(trap_exit, true),
-                  receive
-                      {'EXIT', From, Reason} ->
-                          io:format("Watcher process ~p: ~p died because ~p~n",
-                                    [self(), From, Reason])
-                  end
-          end,
+    Fun =
+        fun() ->
+            process_flag(trap_exit, true),
+            receive
+                {'EXIT', From, Reason} ->
+                    io:format("Watcher process ~p: ~p died because ~p",
+                              [self(), From, Reason])
+            end
+        end,
     spawn_link(Fun),
     process_flag(trap_exit, true),
+    ct:pal("~p sending init", [self()]),
+    attempt(self(), {self(), init}),
     {ok, #state{props = [{pid, self()} | Props],
                 extract_record_fun = fun M:F/A}}.
 
@@ -202,7 +205,7 @@ handle_cast_({succeed, Msg},
             spawn(fun() ->
                       % TODO clean out backups and index
                       % There's a terminate function that I don't seem to be using
-                      ct:pal("~p Spawning child terminator for ~p~n", [self(), Self]),
+                      ct:pal("~p Spawning child terminator for ~p through supervisor", [self(), Self]),
                       supervisor:terminate_child(egre_object_sup, Self)
                   end),
             {noreply, State#state{props = Props}};
