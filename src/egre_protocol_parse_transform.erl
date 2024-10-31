@@ -70,14 +70,10 @@ clause(_Name, {clause, _Line, _Head, _GuardGroups, Body}, State) ->
 attempt_clause({clause, _Line1, [{var, _Line2, '_'}], _, _}, _State) ->
     [];
 
+%% We don't need to see catch-all clauses in the protocol.
 %% Sometimes we'll catch anything that falls through in order to output
 %% missed events. We can ignore these.
 attempt_clause({clause, _Line1, [{var, _Line2, _Var}], _, _}, _State) ->
-    [];
-
-%% We don't need to see catch-all clauses in the protocol
-%% attempt(_Var) -> ...
-attempt_clause({clause, _Line1, [{var, _Line2, Var}], _, _}, _State) when Var == '_Attempt'; Var == '_Msg' ->
     [];
 
 %% We don't need to see catch-all clauses in the protocol
