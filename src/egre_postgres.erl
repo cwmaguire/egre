@@ -33,11 +33,10 @@ init([]) ->
 
     Ref1 = epgsqla:connect(Conn, "localhost", "egre", "egre", #{database => "egre"}),
 
-    receive {Conn_, Ref1_, connected}
-      when Conn_ == Conn, Ref1_ == Ref1 ->
-        io:format("Connected"),
-        Conn_
+    receive {Conn, Ref1, connected} ->
+        ok
     after 1000 ->
+        io:format("Timeout connecting to postgres"),
         timeout
     end,
 
@@ -48,13 +47,13 @@ init([]) ->
                          " values "
                          "($1, $2, $3)",
                          []),
-    io:format(user, "Ref2 = ~p~n", [Ref2]),
 
     Statement = #statement{} =
-        receive {Conn__, Ref2_, {ok, Statement_}} when Conn__ == Conn, Ref2_ == Ref2 ->
-                    Statement_;
-                Other ->
-                    io:format(user, "Statement receive: Other = ~p~n", [Other])
+        receive
+            {Conn, Ref2, {ok, Statement_}} ->
+                Statement_;
+            Other ->
+                io:format(user, "Statement receive: Other = ~p~n", [Other])
         after 1000 ->
             io:format(user, "Statement receive timeout = ~p~n", [timeout])
         end,
@@ -68,22 +67,14 @@ handle_cast({insert, Values},
             State = #state{conn = Conn,
                            statement = Statement = #statement{types = Types}})
   when is_list(Values) ->
-
     TypedParameters = lists:zip(Types, Values),
-    io:format(user, "TypedParameters = ~p~n", [TypedParameters]),
-
     Ref3 = epgsqla:prepared_query(Conn, Statement, TypedParameters),
-    io:format(user, "Ref3 = ~p~n", [Ref3]),
-
-    Results =
-        receive {Conn3, Ref3_, {ok, _Cols, Results_}} when Conn3 == Conn, Ref3_ == Ref3 ->
+    _Results =
+        receive {Conn, Ref3, {ok, _Cols, Results_}} ->
             Results_
         after 1000 ->
             timeout
         end,
-
-    io:format(user, "Result = ~p~n", [Results]),
-
     {noreply, State};
 handle_cast(Msg, State) ->
     io:format(user, "Unrecognized cast: ~p~n", [Msg]),
@@ -95,8 +86,7 @@ handle_info(Info, State) ->
 
 terminate(Reason, State = #state{conn = Conn}) ->
     io:format(user, "Terminating egre_postgres: ~p~n~p~n", [Reason, State]),
-    Result = epgsqla:close(Conn),
-    io:format(user, "Result = ~p~n", [Result]).
+    epgsqla:close(Conn).
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
