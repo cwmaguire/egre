@@ -1,6 +1,27 @@
 %% Copyright 2022, Chris Maguire <cwmaguire@protonmail.com>
 -module(egre_SUITE).
--compile(export_all).
+
+-export([all/0]).
+-export([init_per_suite/1]).
+-export([end_per_suite/1]).
+-export([init_per_testcase/2]).
+-export([end_per_testcase/2]).
+
+-export([start_object/1]).
+-export([attempt_sub/1]).
+-export([attempt_nosub/1]).
+-export([attempt_after/1]).
+-export([succeed_sub/1]).
+-export([succeed_nosub/1]).
+-export([fail_sub/1]).
+-export([fail_nosub/1]).
+-export([second_order_sub/1]).
+-export([set/1]).
+-export([populate/1]).
+-export([broadcast/1]).
+-export([resend/1]).
+-export([stop/1]).
+-export([revive_process/1]).
 
 -include("egre.hrl").
 -include_lib("eunit/include/eunit.hrl").
@@ -21,7 +42,8 @@ all() ->
      populate,
      broadcast,
      resend,
-     stop].
+     stop,
+     revive_process].
 
 init_per_suite(Config) ->
     %egre_dbg:add(egre_object, handle_cast_),
@@ -359,44 +381,6 @@ stop(_Config) ->
 
     ?assertNot(erlang:is_process_alive(Pid)).
 
-%%
-%% END TESTS
-%%
-
-wait_for(_NoUnmetConditions = [], _) ->
-    ok;
-wait_for(Conditions, Count) when Count =< 0 ->
-    {Failures, _} = lists:unzip(Conditions),
-    ct:fail("Failed waiting for conditions: ~p~n", [Failures]);
-wait_for(Conditions, Count) ->
-    {Descriptions, _} = lists:unzip(Conditions),
-    ct:pal("Checking conditions: ~p~n", [Descriptions]),
-    timer:sleep(1000),
-    {_, ConditionsUnmet} = lists:partition(fun run_condition/1, Conditions),
-    wait_for(ConditionsUnmet, Count - 1).
-
-run_condition({_Desc, Fun}) ->
-    Fun().
-
-wait_value(ObjectId, Key, ExpectedValue, Count) ->
-    WaitFun =
-        fun() ->
-            val(Key, ObjectId)
-        end,
-    true = wait_loop(WaitFun, ExpectedValue, Count).
-
-wait_loop(Fun, ExpectedValue, _Count = 0) ->
-    ct:pal("Mismatched function result:~n\tFunction: ~p~n\tResult: ~p",
-           [erlang:fun_to_list(Fun), ExpectedValue]),
-    false;
-wait_loop(Fun, ExpectedValue, Count) ->
-    case Fun() == ExpectedValue of
-        true ->
-            true;
-        false ->
-            ?WAIT100,
-            wait_loop(Fun, ExpectedValue, Count - 1)
-    end.
 
 revive_process(_Config) ->
     Object = {obj_name,
@@ -452,14 +436,14 @@ revive_process(_Config) ->
     ?assertMatch(PlayerV2, val(owner, dexterity0)),
     ?assertMatch(PlayerV2, val(owner, p_stamina)).
 
+%%
+%% END TESTS
+%%
+
 start(Objects) ->
     IdPids = egre:create_graph(Objects),
     timer:sleep(100),
     IdPids.
-
-attempt(Config, Target, Message) ->
-    TestObject = proplists:get_value(test_object, Config),
-    TestObject ! {attempt, Target, Message}.
 
 assert_ct_test_process_mailbox_empty() ->
     receive
