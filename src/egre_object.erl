@@ -129,7 +129,6 @@ init(Props) ->
         end,
     spawn_link(Fun),
     process_flag(trap_exit, true),
-    ct:pal("~p sending init", [self()]),
     attempt(self(), {self(), init}),
     {ok, #state{props = [{pid, self()} | Props],
                 extract_record_fun = fun M:F/A}}.
@@ -362,6 +361,8 @@ run_rules(Attempt = {_, Props, _}) ->
     RulesModules = proplists:get_value(rules, Props),
     handle_attempt(RulesModules, Attempt).
 
+handle_attempt(undefined, _) ->
+    throw(missing_rules_property_in_object);
 handle_attempt([], {_, Props, _}) ->
     _DefaultResponse = {no_rules_module, {succeed, false, Props}};
 handle_attempt([RulesModule | RulesModules], Attempt) ->

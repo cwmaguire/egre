@@ -425,6 +425,12 @@ print({call, _Line, {atom, _Line2, FunctionName}, Params}) ->
 print({cons, _Line, Var1, Var2}) ->
     [<<"[">>, print(Var1), <<" | ">>, print(Var2), <<"]">>];
 
+print({bin, _Line1, BinElements}) ->
+    [print(BinElement) || BinElement <- BinElements];
+
+print({bin_element, _Line1, {string, _Line2, String}, _, _}) ->
+    ["<<\"", list_to_binary(String), "\">>"];
+
 print({nil, _Line}) ->
     <<"[]">>.
 

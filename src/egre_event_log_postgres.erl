@@ -76,4 +76,6 @@ to_binary_(Atom) when is_atom(Atom) ->
 to_binary_(Int) when is_integer(Int) ->
     integer_to_binary(Int);
 to_binary_(Float) when is_float(Float) ->
-    float_to_binary(Float).
+    float_to_binary(Float);
+to_binary_(Map) when is_map(Map) ->
+    iolist_to_binary(io_lib:format("~p", [Map])).

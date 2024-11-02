@@ -5,8 +5,6 @@
 -type context() :: any().
 -type vector() :: any().
 
-%% TODO EGRE doesn't know what any of this means.
-%%      This should be injected by the particular MUD
 
 -record(object,
         {id :: string(),
