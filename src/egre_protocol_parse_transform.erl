@@ -429,7 +429,13 @@ print({bin, _Line1, BinElements}) ->
     [print(BinElement) || BinElement <- BinElements];
 
 print({bin_element, _Line1, {string, _Line2, String}, _, _}) ->
-    ["<<\"", list_to_binary(String), "\">>"];
+    [<<"<<\"">>, list_to_binary(String), <<"\">>">>];
+
+print({map, _Line1, Matches}) ->
+    [<<"#{">>, map_separate(fun print/1, Matches), <<"}">>];
+
+print({map_field_exact, _Line1, Key, Val}) ->
+    [print(Key), <<" := ">>, print(Val)];
 
 print({nil, _Line}) ->
     <<"[]">>.
