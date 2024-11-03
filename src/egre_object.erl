@@ -28,7 +28,7 @@
 -export([code_change/3]).
 
 -record(state, {props :: list(tuple()),
-                extract_record_fun :: fun()}).
+                prop_extract_fun :: fun()}).
 
 -record(procs, {limit = undefined :: undefined | {atom(), integer(), atom()},
                 room = undefined :: pid(),
@@ -131,7 +131,7 @@ init(Props) ->
     process_flag(trap_exit, true),
     attempt(self(), {self(), init}),
     {ok, #state{props = [{pid, self()} | Props],
-                extract_record_fun = fun M:F/A}}.
+                prop_extract_fun = fun M:F/A}}.
 
 handle_call(props, _From, State) ->
     {reply, State#state.props, State};
@@ -163,42 +163,42 @@ handle_cast_({attempt, Msg, Procs}, State = #state{props = Props}) ->
             egre_index:put(Props2),
             Continue
     end;
-handle_cast_({fail, Reason, Msg}, State = #state{extract_record_fun = ExtractRecordFun}) ->
+handle_cast_({fail, Reason, Msg}, State = #state{prop_extract_fun = PropExtractFun}) ->
     case fail(Reason, Msg, State) of
         {stop, Props, LogProps} ->
-            {_, RecordProps} = ExtractRecordFun(Props),
+            {_, CustomProps} = PropExtractFun(Props),
             egre_index:put(Props),
             log([{stage, fail_stop},
                  {object, self()},
                  {owner, proplists:get_value(owner, Props)},
                  {message, Msg},
                  {stop_reason, Reason} |
-                 Props ++ RecordProps ++ LogProps]),
+                 Props ++ CustomProps ++ LogProps]),
             egre_index:put(Props),
             % FIXME I think this will just cause the supervisor to restart it
             % Probably need to tell the supervisor to kill us
             {stop, {shutdown, Reason}, State#state{props = Props}};
         {Props, _, _, LogProps} ->
-            {_, RecordProps} = ExtractRecordFun(Props),
+            {_, CustomProps} = PropExtractFun(Props),
             log([{stage, fail},
                  {object, self()},
                  {message, Msg},
                  {stop_reason, Reason} |
-                 Props ++ RecordProps ++ LogProps]),
+                 Props ++ CustomProps ++ LogProps]),
             egre_index:put(Props),
             {noreply, State#state{props = Props}}
     end;
 handle_cast_({succeed, Msg},
-             State = #state{extract_record_fun = ExtractRecordFun}) ->
+             State = #state{prop_extract_fun = PropExtractFun}) ->
     case succeed(Msg, State) of
         {stop, Reason, Props, LogProps} ->
-            {_, RecordProps} = ExtractRecordFun(Props),
+            {_, CustomProps} = PropExtractFun(Props),
             log([{stage, succeed},
                  {event, stop},
                  {object, self()},
                  {message, Msg},
                  {stop_reason, Reason} |
-                 Props ++ RecordProps ++ LogProps]),
+                 Props ++ CustomProps ++ LogProps]),
             egre_index:put(Props),
             Self = self(),
             spawn(fun() ->
@@ -209,25 +209,25 @@ handle_cast_({succeed, Msg},
                   end),
             {noreply, State#state{props = Props}};
         {Props, LogProps} ->
-            {_, RecordProps} = ExtractRecordFun(Props),
+            {_, CustomProps} = PropExtractFun(Props),
             log([{stage, succeed},
                  {object, self()},
                  {message, Msg} |
-                 Props ++ RecordProps ++ LogProps]),
+                 Props ++ CustomProps ++ LogProps]),
             egre_index:put(Props),
             {noreply, State#state{props = Props}}
     end.
 
 handle_info({'EXIT', From, Reason},
             State = #state{props = Props,
-                           extract_record_fun = ExtractRecordFun}) ->
+                           prop_extract_fun = PropExtractFun}) ->
     ct:pal("~p:handle_info({'EXIT', From: ~p, Reason: ~p}) - ~p~n", [?MODULE, From, Reason, self()]),
-    {_, RecordProps} = ExtractRecordFun(Props),
+    {_, CustomProps} = PropExtractFun(Props),
     log([{?EVENT, exit},
          {object, self()},
          {source, From},
          {reason, Reason} |
-         Props ++ RecordProps]),
+         Props ++ CustomProps]),
     ?LOG_INFO("Process ~p died~n", [From]),
     egre_index:subscribe_dead(self(), From),
     Props2 = mark_pid_dead(From, Props),
@@ -245,22 +245,22 @@ handle_info({send_after, Pid, Msg, ShouldSub}, State) when is_pid(Pid) ->
     {noreply, State};
 handle_info(Unknown,
             State = #state{props = Props,
-                           extract_record_fun = ExtractRecordFun}) ->
-    {_, RecordProps} = ExtractRecordFun(Props),
+                           prop_extract_fun = PropExtractFun}) ->
+    {_, CustomProps} = PropExtractFun(Props),
     log([{?EVENT, unknown_message},
          {object, self()},
          {message, Unknown} |
-         Props ++ RecordProps]),
+         Props ++ CustomProps]),
     {noreply, State}.
 
 terminate(Reason,
           _State = #state{props = Props,
-                          extract_record_fun = ExtractRecordFun}) ->
-    {_, RecordProps} = ExtractRecordFun(Props),
+                          prop_extract_fun = PropExtractFun}) ->
+    {_, CustomProps} = PropExtractFun(Props),
     log([{?EVENT, shutdown},
          {object, self()},
          {reason, Reason} |
-         Props ++ RecordProps]),
+         Props ++ CustomProps]),
     egre_index:del(self()),
     ok.
 
@@ -295,8 +295,8 @@ exit_has_room(Props, Room) ->
 attempt_(Msg,
          Procs,
          State = #state{props = Props,
-                        extract_record_fun = ExtractRecordFun}) ->
-    {Record, RecordProps} = ExtractRecordFun(Props),
+                        prop_extract_fun = PropExtractFun}) ->
+    {Record, CustomProps} = PropExtractFun(Props),
     {RulesModule,
      Results = {Result,
                 Msg2,
@@ -313,7 +313,7 @@ attempt_(Msg,
          {subscribe, ShouldSubscribe},
          {room, Procs#procs.room} |
          Props2] ++
-         RecordProps ++
+         CustomProps ++
          LogProps ++
          result_tuples(Result)),
     %ct:pal("~p:~p: PREMERGE: Self = ~p; Msg = ~p; Procs~n\t~p~nResult: ~p~n",
