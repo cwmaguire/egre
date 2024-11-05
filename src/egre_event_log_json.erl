@@ -53,15 +53,16 @@ init([]) ->
 handle_call(_Msg, _From, State) ->
     {reply, ignored, State}.
 
-handle_cast({log, Props}, State = #state{loggers = Loggers}) when is_list(Props) ->
+handle_cast({log, Proplist}, State = #state{loggers = Loggers}) when is_list(Proplist) ->
+    FlattenedKeys = [{flatten_key(K), V} || {K, V} <- Proplist],
     JSON =
         try
-            jsx:encode(Props)
+            jsx:encode(FlattenedKeys)
         catch
             Class:Error ->
                 io:format(user,
-                          "~p: ~p caught error:~n\t~p:~p~n",
-                          [self(), ?MODULE, Class, Error]),
+                          "~p: ~p caught error: ~p:~p~n~p~n",
+                          [self(), ?MODULE, Class, Error, FlattenedKeys]),
                 {error, Error}
         end,
     ok = file:write(State#state.log_file, <<JSON/binary, "\n">>),
@@ -104,3 +105,10 @@ call_logger(Logger, Level, JSON) ->
                       "~p: ~p caught error calling Logger function:~n\t~p:~p~n",
                       [self(), ?MODULE, Class, Error])
     end.
+
+flatten_key([A1, <<" ">>, A2]) when is_atom(A1), is_atom(A2) ->
+    B1 = atom_to_binary(A1, utf8),
+    B2 = atom_to_binary(A2, utf8),
+    <<B1/binary, "_", B2/binary>>;
+flatten_key(Other) ->
+    Other.

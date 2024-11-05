@@ -58,14 +58,14 @@ handle_call(Request, From, State) ->
     {reply, ignored, State}.
 
 handle_cast({log, Pid, Level, Props},
-            State = #state{serialize_fun = SerializeFun})
+            State = #state{serialize_fun = CustomSerializeFun})
   when is_list(Props) ->
     Props2 = [{process, Pid}, {level, Level} | Props],
     NamedProps = add_index_details(Props2),
     S = fun(Val, Fun) ->
                 egre_serialize:serialize(Val, Fun)
         end,
-    BinProps = [{flatten_key(S(K, SerializeFun)), S(V, SerializeFun)}
+    BinProps = [{S(K, CustomSerializeFun), S(V, CustomSerializeFun)}
                 || {K, V} <- NamedProps],
 
     egre_event_log_json:log(NamedProps, BinProps),
@@ -85,13 +85,6 @@ terminate(Reason, State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
-
-flatten_key([A1, A2]) when is_atom(A1), is_atom(A2) ->
-    B1 = atom_to_binary(A1, utf8),
-    B2 = atom_to_binary(A2, utf8),
-    <<B1/binary, "_", B2/binary>>;
-flatten_key(Other) ->
-    Other.
 
 add_index_details(Props) ->
     lists:foldl(fun add_index_details/2, [], Props).
