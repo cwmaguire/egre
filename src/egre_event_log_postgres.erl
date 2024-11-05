@@ -56,13 +56,18 @@ code_change(_OldVsn, State, _Extra) ->
 %% util
 
 log_to_db(Props, SerializeFun) ->
-    PID = proplists:get_value(pid, Props, no_pid),
-    Mod = proplists:get_value(rules_module, Props, no_rules_module),
-    Message = proplists:get_value(message, Props, no_message),
+    SFun = fun(V) ->
+                egre_serialize:serialize(V, SerializeFun)
+           end,
+    DFun = fun default/2,
 
-    Values = [egre_serialize:serialize(V, SerializeFun) || V <- [PID, Mod, Message]],
+    Keys = [pid, stage, rules_module, message, owner, character],
+    Values = lists:map(fun(K) -> SFun(DFun(K, Props)) end, Keys),
     BinValues = lists:map(fun to_binary/1, Values),
     egre_postgres:insert(BinValues).
+
+default(Key, Props) ->
+    proplists:get_value(Key, Props, {<<"No">>, Key}).
 
 to_binary(Values) ->
     iolist_to_binary(to_binary_(Values)).

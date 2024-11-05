@@ -10,6 +10,7 @@
 -export([attempt/2]).
 -export([attempt/3]).
 -export([register_logger/2]).
+-export([wait_for_db/0]).
 
 create_graph(Objects) ->
     IdPids = [{Id, start_object(Id, Props)} || {Id, Props} <- Objects],
@@ -42,3 +43,8 @@ attempt(ObjectPid, Event, ShouldSubscribe) ->
 
 register_logger(json, Fun) ->
     egre_event_log_json:register_logger(Fun).
+
+wait_for_db() ->
+    io:format(user, "Caller ~p waiting for DB to be finished~n", [self()]),
+    egre_postgres:wait_for_db(),
+    io:format(user, "Caller ~p: DB finished~n", [self()]).

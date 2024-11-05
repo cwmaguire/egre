@@ -2,6 +2,8 @@
 
 -export([serialize/2]).
 
+serialize(Bin, _SerializeFun) when is_binary(Bin) ->
+    Bin;
 serialize(List, SerializeFun) when is_list(List) ->
     case is_string(List) of
         true ->
@@ -13,7 +15,9 @@ serialize(Timestamp = {Meg, Sec, Mic}, _)
   when is_integer(Meg), is_integer(Sec), is_integer(Mic)  ->
     ts2b(Timestamp);
 serialize(Tuple, SerializeFun) when is_tuple(Tuple) ->
-    serialize(tuple_to_list(Tuple), SerializeFun);
+    List = tuple_to_list(Tuple),
+    JoinedList = lists:join(<<" ">>, List),
+    serialize(JoinedList, SerializeFun);
 serialize(Ref, _) when is_reference(Ref) ->
     ref2b(Ref);
 serialize(Pid, _) when is_pid(Pid) ->

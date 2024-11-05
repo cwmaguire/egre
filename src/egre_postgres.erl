@@ -6,6 +6,7 @@
 
 -export([start_link/0]).
 -export([insert/1]).
+-export([wait_for_db/0]).
 
 %% gen_server
 
@@ -17,10 +18,14 @@
 -export([code_change/3]).
 
 -record(state, {conn :: pid(),
-                statement :: epgsql:statement()}).
+                statement :: epgsql:statement(),
+                ref :: reference()}).
 
 insert(Values) ->
     gen_server:cast(?MODULE, {insert, Values}).
+
+wait_for_db() ->
+    gen_server:call(?MODULE, wait_for_db).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -31,35 +36,12 @@ init([]) ->
     {ok, Conn} = epgsqla:start_link(),
     io:format(user, "epgsql started: Conn = ~p~n", [Conn]),
 
-    Ref1 = epgsqla:connect(Conn, "localhost", "egre", "egre", #{database => "egre"}),
+    Ref = epgsqla:connect(Conn, "localhost", "egre", "egre", #{database => "egre"}),
 
-    receive {Conn, Ref1, connected} ->
-        ok
-    after 1000 ->
-        io:format("Timeout connecting to postgres"),
-        timeout
-    end,
+    {ok, #state{conn = Conn, ref = Ref}}.
 
-    Ref2 = epgsqla:parse(Conn,
-                         "insert_log",
-                         "insert into log "
-                         "(pid, rules_module, message)"
-                         " values "
-                         "($1, $2, $3)",
-                         []),
-
-    Statement = #statement{} =
-        receive
-            {Conn, Ref2, {ok, Statement_}} ->
-                Statement_;
-            Other ->
-                io:format(user, "Statement receive: Other = ~p~n", [Other])
-        after 1000 ->
-            io:format(user, "Statement receive timeout = ~p~n", [timeout])
-        end,
-     {ok, #state{conn = Conn,
-                 statement = Statement}}.
-
+handle_call(wait_for_db, _From, State) ->
+    {reply, ok, State};
 handle_call(_Msg, _From, State) ->
     {reply, ignored, State}.
 
@@ -68,18 +50,19 @@ handle_cast({insert, Values},
                            statement = Statement = #statement{types = Types}})
   when is_list(Values) ->
     TypedParameters = lists:zip(Types, Values),
-    Ref3 = epgsqla:prepared_query(Conn, Statement, TypedParameters),
-    _Results =
-        receive {Conn, Ref3, {ok, _Cols, Results_}} ->
-            Results_
-        after 1000 ->
-            timeout
-        end,
-    {noreply, State};
+    epgsqla:prepared_query(Conn, Statement, TypedParameters),
+    {noreply, State#state{ref = undefined}};
 handle_cast(Msg, State) ->
-    io:format(user, "Unrecognized cast: ~p~n", [Msg]),
+    io:format(user, "Unrecognized cast: ~p, State: ~p", [Msg, State]),
     {noreply, State}.
 
+handle_info({Conn, Ref, connected}, State = #state{conn = Conn, ref = Ref}) ->
+    StatementRef = create_statement(Conn),
+    {noreply, State#state{ref = StatementRef}};
+handle_info({Conn, Ref, {ok, Statement = #statement{}}}, State = #state{conn = Conn, ref = Ref}) ->
+    {noreply, State#state{statement = Statement, ref = undefined}};
+handle_info({Conn, _Ref, {ok, _NumInserted}}, State = #state{conn = Conn}) ->
+    {noreply, State};
 handle_info(Info, State) ->
     io:format(user, "~p: ~p:handle_info(~p, State)~n", [self(), ?MODULE, Info]),
     {noreply, State}.
@@ -90,3 +73,12 @@ terminate(Reason, State = #state{conn = Conn}) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+create_statement(Conn) ->
+    epgsqla:parse(Conn,
+                  "insert_log",
+                  "insert into log "
+                  "(pid, stage, rules_module, message, owner, character)"
+                  " values "
+                  "($1, $2, $3, $4, $5, $6)",
+                  []).
