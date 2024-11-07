@@ -464,9 +464,9 @@ move_leading_underscore(Bin) ->
     Bin.
 
 loop_with_state(Forms, Fun, State) ->
-    io:format(user, "Forms = ~p~n", [Forms]),
+    %io:format(user, "Forms = ~p~n", [Forms]),
     lists:foldl(fun(Form, {Exps, StateInner}) ->
-                    io:format(user, "Form = ~p~n", [Form]),
+                    %io:format(user, "Form = ~p~n", [Form]),
                     {Exp, StateAcc} = Fun(Form, StateInner),
                     {Exps ++ [Exp], StateAcc}
                 end,

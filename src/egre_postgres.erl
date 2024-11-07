@@ -1,84 +1,214 @@
 -module(egre_postgres).
 
 -include_lib("epgsql/include/epgsql.hrl").
+-include("postgres.hrl").
 
--behaviour(gen_server).
+-behaviour(gen_statem).
 
 -export([start_link/0]).
--export([insert/1]).
--export([wait_for_db/0]).
-
-%% gen_server
+-export([insert_log/1]).
+-export([insert_pid_id/1]).
+-export([wait_ready/0]).
+-export([wait_done/1]).
 
 -export([init/1]).
--export([handle_call/3]).
--export([handle_cast/2]).
--export([handle_info/2]).
--export([terminate/2]).
--export([code_change/3]).
+-export([callback_mode/0]).
 
--record(state, {conn :: pid(),
-                statement :: epgsql:statement(),
-                ref :: reference()}).
+-export([connecting/3]).
+-export([log_table/3]).
+-export([pid_id_table/3]).
+-export([pid_id_index/3]).
+-export([log_statement/3]).
+-export([pid_id_statement/3]).
+-export([logging/3]).
+-export([waiting/3]).
 
-insert(Values) ->
-    gen_server:cast(?MODULE, {insert, Values}).
+-record(data, {conn :: pid(),
+               ref :: reference(),
+               log_statement :: epgsql:statement(),
+               pid_id_statement :: epgsql:statement(),
+               from :: pid()}).
 
-wait_for_db() ->
-    gen_server:call(?MODULE, wait_for_db).
+insert_log(Values) ->
+    gen_statem:cast(?MODULE, {insert_log, Values}).
+
+insert_pid_id(Values) ->
+    gen_statem:cast(?MODULE, {insert_pid_id, Values}).
+
+wait_ready() ->
+    gen_statem:call(?MODULE, wait_ready).
+
+wait_done(TimeoutMillis) ->
+    gen_statem:call(?MODULE, {wait_for_db, TimeoutMillis}).
 
 start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+    gen_statem:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-%% gen_server
+callback_mode() ->
+    [state_functions, state_enter].
 
 init([]) ->
     {ok, Conn} = epgsqla:start_link(),
     io:format(user, "epgsql started: Conn = ~p~n", [Conn]),
+    {ok, connecting, #data{conn = Conn}}.
 
+connecting(enter, _, Data = #data{conn = Conn}) ->
     Ref = epgsqla:connect(Conn, "localhost", "egre", "egre", #{database => "egre"}),
+    {keep_state, Data#data{ref = Ref}};
+connecting(info, {Conn, ConnRef, connected}, Data = #data{conn = Conn, ref = ConnRef}) ->
+    {next_state, log_table, Data#data{ref = undefined}};
+connecting(_, Event, #data{conn = Conn, ref = ConnRef}) ->
+    ct:pal("~p ignoring ~p in state connecting, waiting for ConnReff ~p for Conn ~p",
+           [self(), Event, ConnRef, Conn]),
+    {keep_state_and_data, postpone}.
 
-    {ok, #state{conn = Conn, ref = Ref}}.
+log_table(enter, _, Data = #data{conn = Conn}) ->
+    ColumnNames = [atom_to_binary(Col) || Col <- ?LOG_COLUMNS],
+    Ref = create_log_table(Conn, ColumnNames),
+    {keep_state, Data#data{ref = Ref}};
+log_table(info, {Conn, LogTableRef, Result}, Data = #data{conn = Conn, ref = LogTableRef}) ->
+    ct:pal("~p:~p: Result~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Result]),
+    {next_state, pid_id_table, Data#data{ref = undefined}};
+log_table(_, _Event, _Data) ->
+    {keep_state_and_data, [postpone]}.
 
-handle_call(wait_for_db, _From, State) ->
-    {reply, ok, State};
-handle_call(_Msg, _From, State) ->
-    {reply, ignored, State}.
+pid_id_table(enter, _, Data = #data{conn = Conn}) ->
+    ColumnNames = [atom_to_binary(Col) || Col <- ?PID_ID_COLUMNS],
+    Ref = create_pid_id_table(Conn, ColumnNames),
+    {keep_state, Data#data{ref = Ref}};
+pid_id_table(info, {Conn, PidIdRef, Result}, Data = #data{conn = Conn, ref = PidIdRef}) ->
+    ct:pal("~p:~p: Result~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Result]),
+    {next_state, pid_id_index, Data#data{ref = undefined}};
+pid_id_table(_, _Event, _Data) ->
+    {keep_state_and_data, [postpone]}.
 
-handle_cast({insert, Values},
-            State = #state{conn = Conn,
-                           statement = Statement = #statement{types = Types}})
+pid_id_index(enter, _, Data = #data{conn = Conn}) ->
+    Ref = create_pid_id_index(Conn),
+    {keep_state, Data#data{ref = Ref}};
+pid_id_index(info, {Conn, PidIdIndexRef, Result}, Data = #data{conn = Conn, ref = PidIdIndexRef}) ->
+    ct:pal("~p:~p: Result~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Result]),
+    {next_state, log_statement, Data#data{ref = undefined}};
+pid_id_index(_, _Event, _Data) ->
+    {keep_state_and_data, [postpone]}.
+
+log_statement(enter, _, Data = #data{conn = Conn}) ->
+    ColumnNames = [atom_to_binary(Col) || Col <- ?LOG_COLUMNS],
+    Ref = create_log_insert_statement(Conn, ColumnNames),
+    {keep_state, Data#data{ref = Ref}};
+log_statement(info, {Conn, LogStatementRef, {ok, Statement}}, Data = #data{conn = Conn, ref = LogStatementRef}) ->
+    {next_state, pid_id_statement, Data#data{ref = undefined, log_statement = Statement}};
+log_statement(info, {Conn, LogStatementRef, Other}, #data{conn = Conn, ref = LogStatementRef}) ->
+    ct:pal("~p:~p: Result~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Other]),
+    {stop, <<"failed to create log statement">>};
+log_statement(_, _Event, _Data) ->
+    {keep_state_and_data, [postpone]}.
+
+pid_id_statement(enter, _, Data = #data{conn = Conn}) ->
+    ColumnNames = [atom_to_binary(Col) || Col <- ?PID_ID_COLUMNS],
+    Ref = create_pid_id_insert_statement(Conn, ColumnNames),
+    {keep_state, Data#data{ref = Ref}};
+pid_id_statement(info, {Conn, PidIdStatementRef, {ok, Statement}}, Data = #data{conn = Conn, ref = PidIdStatementRef}) ->
+    {next_state, logging, Data#data{ref = undefined, pid_id_statement = Statement}};
+pid_id_statement(info, {Conn, PidIdStatementRef, Other}, #data{conn = Conn, ref = PidIdStatementRef}) ->
+    ct:pal("~p:~p: Result~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Other]),
+    {stop, <<"failed to create pid_id statement">>};
+pid_id_statement(_, _Event, _Data) ->
+    {keep_state_and_data, [postpone]}.
+
+logging(enter, _, _) ->
+    keep_state_and_data;
+
+logging({call, From}, wait_ready, #data{}) ->
+    {keep_state_and_data, {reply, From, done}};
+logging({call, From}, {wait_for_db, Millis}, Data) ->
+    {next_state, waiting, Data #data{from = From}, _Timeout = Millis};
+
+logging(cast, {insert_log, Values}, #data{conn = Conn, log_statement = Statement})
   when is_list(Values) ->
+    insert(Values, Statement, Conn),
+    keep_state_and_data;
+logging(cast, {insert_pid_id, Values}, #data{conn = Conn, pid_id_statement = Statement})
+  when is_list(Values) ->
+    insert(Values, Statement, Conn),
+    keep_state_and_data;
+
+logging(info, {Conn, _Ref, {ok, _RowsInserted}}, #data{conn = Conn}) ->
+    keep_state_and_data;
+logging(info, {Conn, _Ref, {error, Error}}, #data{conn = Conn}) ->
+    ct:pal("~p Logging error: ~p", [self(), Error]),
+    keep_state_and_data;
+
+logging(Type, Event, _Data) ->
+    ct:pal("~p:~p: Unexpected Type ~p and Event ~p", [?MODULE, ?FUNCTION_NAME, Type, Event]),
+    keep_state_and_data.
+
+waiting(enter, _, _) ->
+    keep_state_and_data;
+waiting(timeout, _, Data = #data{from = From}) ->
+    ct:pal("~p timeout in waiting; sending 'done' back to ~p", [self(), From]),
+    {keep_state, Data#data{from = undefined}, {reply, From, done}};
+waiting(cast, {insert_log, _Values}, Data) ->
+    {next_state, logging, Data, postpone};
+waiting(cast, {insert_id_id, _Values}, Data) ->
+    {next_state, logging, Data, postpone}.
+
+insert(Values, Statement = #statement{types = Types}, Conn) ->
     TypedParameters = lists:zip(Types, Values),
-    epgsqla:prepared_query(Conn, Statement, TypedParameters),
-    {noreply, State#state{ref = undefined}};
-handle_cast(Msg, State) ->
-    io:format(user, "Unrecognized cast: ~p, State: ~p", [Msg, State]),
-    {noreply, State}.
+    epgsqla:prepared_query(Conn, Statement, TypedParameters).
 
-handle_info({Conn, Ref, connected}, State = #state{conn = Conn, ref = Ref}) ->
-    StatementRef = create_statement(Conn),
-    {noreply, State#state{ref = StatementRef}};
-handle_info({Conn, Ref, {ok, Statement = #statement{}}}, State = #state{conn = Conn, ref = Ref}) ->
-    {noreply, State#state{statement = Statement, ref = undefined}};
-handle_info({Conn, _Ref, {ok, _NumInserted}}, State = #state{conn = Conn}) ->
-    {noreply, State};
-handle_info(Info, State) ->
-    io:format(user, "~p: ~p:handle_info(~p, State)~n", [self(), ?MODULE, Info]),
-    {noreply, State}.
-
-terminate(Reason, State = #state{conn = Conn}) ->
-    io:format(user, "Terminating egre_postgres: ~p~n~p~n", [Reason, State]),
-    epgsqla:close(Conn).
-
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
-
-create_statement(Conn) ->
+create_log_insert_statement(Conn, Keys) ->
+    Columns = lists:join(<<",">>, [Key || Key <- Keys]),
+    Digits = lists:seq(1, length(Keys)),
+    Params = lists:join(<<",">>, [[<<"$">>, integer_to_binary(Digit)] || Digit <- Digits]),
     epgsqla:parse(Conn,
-                  "insert_log",
-                  "insert into log "
-                  "(pid, stage, rules_module, message, owner, character)"
-                  " values "
-                  "($1, $2, $3, $4, $5, $6)",
+                  _Name = "insert_log",
+                  ["insert into log "
+                   "(",
+                   Columns,
+                   ")"
+                   " values "
+                   "(",
+                   Params,
+                   ")"],
                   []).
+
+create_pid_id_insert_statement(Conn, Keys) ->
+    Columns = lists:join(<<",">>, [Key || Key <- Keys]),
+    Digits = lists:seq(1, length(Keys)),
+    Params = lists:join(<<",">>, [[<<"$">>, integer_to_binary(Digit)] || Digit <- Digits]),
+    epgsqla:parse(Conn,
+                  _Name = "insert_pid_id",
+                  ["insert into pid_id "
+                   "(",
+                   Columns,
+                   ")"
+                   " values "
+                   "(",
+                   Params,
+                   ") "
+                   "on conflict (tag, pid) do nothing;"], %% could use "on conflict on constraint tag_pid do nothing"
+                  []).
+
+create_log_table(Conn, Columns) ->
+    ColumnSpecs = [[", ", Col, " text"] || Col <- Columns],
+
+    epgsqla:squery(Conn,
+                   ["create table if not exists log ("
+                    "id serial primary key, "
+                    "timestamp timestamp default current_timestamp ",
+                    ColumnSpecs,
+                    ");"]).
+
+create_pid_id_table(Conn, Keys) ->
+    Columns = [[", ", Key, " text"] || Key <- Keys],
+
+    epgsqla:squery(Conn,
+                   ["create table if not exists pid_id ("
+                    "id serial primary key, "
+                    "timestamp timestamp default current_timestamp ",
+                    Columns,
+                    ")"]).
+
+create_pid_id_index(Conn) ->
+    epgsqla:squery(Conn,
+                   ["create unique index if not exists tag_pid on pid_id(tag, pid);"]).

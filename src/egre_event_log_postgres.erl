@@ -3,6 +3,8 @@
 
 -behaviour(gen_server).
 
+-include("postgres.hrl").
+
 -export([start_link/0]).
 -export([log/2]).
 
@@ -56,18 +58,20 @@ code_change(_OldVsn, State, _Extra) ->
 %% util
 
 log_to_db(Props, SerializeFun) ->
+    insert(Props, SerializeFun, ?LOG_COLUMNS, insert_log),
+    insert(Props, SerializeFun, ?PID_ID_COLUMNS, insert_pid_id).
+
+insert(Props, SerializeFun, Columns, Function) ->
     SFun = fun(V) ->
                 egre_serialize:serialize(V, SerializeFun)
            end,
     DFun = fun default/2,
-
-    Keys = [pid, stage, rules_module, message, owner, character],
-    Values = lists:map(fun(K) -> SFun(DFun(K, Props)) end, Keys),
+    Values = lists:map(fun(K) -> SFun(DFun(K, Props)) end, Columns),
     BinValues = lists:map(fun to_binary/1, Values),
-    egre_postgres:insert(BinValues).
+    egre_postgres:Function(BinValues).
 
 default(Key, Props) ->
-    proplists:get_value(Key, Props, {<<"No">>, Key}).
+    proplists:get_value(Key, Props, {<<"undefined">>, Key}).
 
 to_binary(Values) ->
     iolist_to_binary(to_binary_(Values)).

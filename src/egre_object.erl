@@ -28,7 +28,8 @@
 -export([code_change/3]).
 
 -record(state, {props :: list(tuple()),
-                prop_extract_fun :: fun()}).
+                prop_extract_fun :: fun(),
+                log_tag :: atom()}).
 
 -record(procs, {limit = undefined :: undefined | {atom(), integer(), atom()},
                 room = undefined :: pid(),
@@ -117,6 +118,7 @@ has_pid(Props, Pid) ->
 %% gen_server.
 
 init(Props) ->
+    {ok, LogTag} = application:get_env(egre, tag),
     {ok, {M, F, A}} = application:get_env(egre, extract_fun),
     Fun =
         fun() ->
@@ -131,7 +133,8 @@ init(Props) ->
     process_flag(trap_exit, true),
     attempt(self(), {self(), init}),
     {ok, #state{props = [{pid, self()} | Props],
-                prop_extract_fun = fun M:F/A}}.
+                prop_extract_fun = fun M:F/A,
+                log_tag = LogTag}}.
 
 handle_call(props, _From, State) ->
     {reply, State#state.props, State};
@@ -143,8 +146,10 @@ handle_call(_Request, _From, State) ->
 handle_cast(Msg, State) ->
     handle_cast_(Msg, State).
 
-handle_cast_({populate, ProcIds}, State = #state{props = Props}) ->
-    log([{stage, none},
+handle_cast_({populate, ProcIds},
+             State = #state{props = Props,
+                            log_tag = LogTag}) ->
+    log([{tag, LogTag},
          {object, self()},
          {?EVENT, populate},
          {source, self()} |
@@ -163,12 +168,15 @@ handle_cast_({attempt, Msg, Procs}, State = #state{props = Props}) ->
             egre_index:put(Props2),
             Continue
     end;
-handle_cast_({fail, Reason, Msg}, State = #state{prop_extract_fun = PropExtractFun}) ->
+handle_cast_({fail, Reason, Msg},
+             State = #state{prop_extract_fun = PropExtractFun,
+                            log_tag = LogTag}) ->
     case fail(Reason, Msg, State) of
         {stop, Props, LogProps} ->
             {_, CustomProps} = PropExtractFun(Props),
             egre_index:put(Props),
-            log([{stage, fail_stop},
+            log([{tag, LogTag},
+                 {stage, fail_stop},
                  {object, self()},
                  {owner, proplists:get_value(owner, Props)},
                  {message, Msg},
@@ -189,11 +197,13 @@ handle_cast_({fail, Reason, Msg}, State = #state{prop_extract_fun = PropExtractF
             {noreply, State#state{props = Props}}
     end;
 handle_cast_({succeed, Msg},
-             State = #state{prop_extract_fun = PropExtractFun}) ->
+             State = #state{prop_extract_fun = PropExtractFun,
+                            log_tag = LogTag}) ->
     case succeed(Msg, State) of
         {stop, Reason, Props, LogProps} ->
             {_, CustomProps} = PropExtractFun(Props),
-            log([{stage, succeed},
+            log([{tag, LogTag},
+                 {stage, succeed},
                  {event, stop},
                  {object, self()},
                  {message, Msg},
@@ -210,7 +220,8 @@ handle_cast_({succeed, Msg},
             {noreply, State#state{props = Props}};
         {Props, LogProps} ->
             {_, CustomProps} = PropExtractFun(Props),
-            log([{stage, succeed},
+            log([{tag, LogTag},
+                 {stage, succeed},
                  {object, self()},
                  {message, Msg} |
                  Props ++ CustomProps ++ LogProps]),
@@ -220,10 +231,12 @@ handle_cast_({succeed, Msg},
 
 handle_info({'EXIT', From, Reason},
             State = #state{props = Props,
-                           prop_extract_fun = PropExtractFun}) ->
+                           prop_extract_fun = PropExtractFun,
+                           log_tag = LogTag}) ->
     ct:pal("~p:handle_info({'EXIT', From: ~p, Reason: ~p}) - ~p~n", [?MODULE, From, Reason, self()]),
     {_, CustomProps} = PropExtractFun(Props),
-    log([{?EVENT, exit},
+    log([{tag, LogTag},
+         {?EVENT, exit},
          {object, self()},
          {source, From},
          {reason, Reason} |
@@ -245,9 +258,11 @@ handle_info({send_after, Pid, Msg, ShouldSub}, State) when is_pid(Pid) ->
     {noreply, State};
 handle_info(Unknown,
             State = #state{props = Props,
-                           prop_extract_fun = PropExtractFun}) ->
+                           prop_extract_fun = PropExtractFun,
+                           log_tag = LogTag}) ->
     {_, CustomProps} = PropExtractFun(Props),
-    log([{?EVENT, unknown_message},
+    log([{tag, LogTag},
+         {?EVENT, unknown_message},
          {object, self()},
          {message, Unknown} |
          Props ++ CustomProps]),
@@ -255,9 +270,11 @@ handle_info(Unknown,
 
 terminate(Reason,
           _State = #state{props = Props,
-                          prop_extract_fun = PropExtractFun}) ->
+                          prop_extract_fun = PropExtractFun,
+                          log_tag = LogTag}) ->
     {_, CustomProps} = PropExtractFun(Props),
-    log([{?EVENT, shutdown},
+    log([{tag, LogTag},
+         {?EVENT, shutdown},
          {object, self()},
          {reason, Reason} |
          Props ++ CustomProps]),
@@ -295,7 +312,8 @@ exit_has_room(Props, Room) ->
 attempt_(Msg,
          Procs,
          State = #state{props = Props,
-                        prop_extract_fun = PropExtractFun}) ->
+                        prop_extract_fun = PropExtractFun,
+                        log_tag = LogTag}) ->
     {Record, CustomProps} = PropExtractFun(Props),
     {RulesModule,
      Results = {Result,
@@ -306,7 +324,8 @@ attempt_(Msg,
       = ensure_log_props(
           ensure_message(Msg,
                          run_rules({Record, Props, Msg}))),
-    log([{stage, attempt},
+    log([{tag, LogTag},
+         {stage, attempt},
          {object, self()},
          {message, Msg},
          {rules_module, RulesModule},
