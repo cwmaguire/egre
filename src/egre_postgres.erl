@@ -21,7 +21,6 @@
 -export([log_statement/3]).
 -export([pid_id_statement/3]).
 -export([logging/3]).
--export([waiting/3]).
 
 -record(data, {conn :: pid(),
                ref :: reference(),
@@ -57,17 +56,14 @@ connecting(enter, _, Data = #data{conn = Conn}) ->
     {keep_state, Data#data{ref = Ref}};
 connecting(info, {Conn, ConnRef, connected}, Data = #data{conn = Conn, ref = ConnRef}) ->
     {next_state, log_table, Data#data{ref = undefined}};
-connecting(_, Event, #data{conn = Conn, ref = ConnRef}) ->
-    ct:pal("~p ignoring ~p in state connecting, waiting for ConnReff ~p for Conn ~p",
-           [self(), Event, ConnRef, Conn]),
+connecting(_, _Event, #data{}) ->
     {keep_state_and_data, postpone}.
 
 log_table(enter, _, Data = #data{conn = Conn}) ->
     ColumnNames = [atom_to_binary(Col) || Col <- ?LOG_COLUMNS],
     Ref = create_log_table(Conn, ColumnNames),
     {keep_state, Data#data{ref = Ref}};
-log_table(info, {Conn, LogTableRef, Result}, Data = #data{conn = Conn, ref = LogTableRef}) ->
-    ct:pal("~p:~p: Result~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Result]),
+log_table(info, {Conn, LogTableRef, _Result}, Data = #data{conn = Conn, ref = LogTableRef}) ->
     {next_state, pid_id_table, Data#data{ref = undefined}};
 log_table(_, _Event, _Data) ->
     {keep_state_and_data, [postpone]}.
@@ -76,8 +72,7 @@ pid_id_table(enter, _, Data = #data{conn = Conn}) ->
     ColumnNames = [atom_to_binary(Col) || Col <- ?PID_ID_COLUMNS],
     Ref = create_pid_id_table(Conn, ColumnNames),
     {keep_state, Data#data{ref = Ref}};
-pid_id_table(info, {Conn, PidIdRef, Result}, Data = #data{conn = Conn, ref = PidIdRef}) ->
-    ct:pal("~p:~p: Result~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Result]),
+pid_id_table(info, {Conn, PidIdRef, _Result}, Data = #data{conn = Conn, ref = PidIdRef}) ->
     {next_state, pid_id_index, Data#data{ref = undefined}};
 pid_id_table(_, _Event, _Data) ->
     {keep_state_and_data, [postpone]}.
@@ -85,8 +80,7 @@ pid_id_table(_, _Event, _Data) ->
 pid_id_index(enter, _, Data = #data{conn = Conn}) ->
     Ref = create_pid_id_index(Conn),
     {keep_state, Data#data{ref = Ref}};
-pid_id_index(info, {Conn, PidIdIndexRef, Result}, Data = #data{conn = Conn, ref = PidIdIndexRef}) ->
-    ct:pal("~p:~p: Result~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Result]),
+pid_id_index(info, {Conn, PidIdIndexRef, _Result}, Data = #data{conn = Conn, ref = PidIdIndexRef}) ->
     {next_state, log_statement, Data#data{ref = undefined}};
 pid_id_index(_, _Event, _Data) ->
     {keep_state_and_data, [postpone]}.
@@ -97,8 +91,7 @@ log_statement(enter, _, Data = #data{conn = Conn}) ->
     {keep_state, Data#data{ref = Ref}};
 log_statement(info, {Conn, LogStatementRef, {ok, Statement}}, Data = #data{conn = Conn, ref = LogStatementRef}) ->
     {next_state, pid_id_statement, Data#data{ref = undefined, log_statement = Statement}};
-log_statement(info, {Conn, LogStatementRef, Other}, #data{conn = Conn, ref = LogStatementRef}) ->
-    ct:pal("~p:~p: Result~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Other]),
+log_statement(info, {Conn, LogStatementRef, _Other}, #data{conn = Conn, ref = LogStatementRef}) ->
     {stop, <<"failed to create log statement">>};
 log_statement(_, _Event, _Data) ->
     {keep_state_and_data, [postpone]}.
@@ -109,48 +102,61 @@ pid_id_statement(enter, _, Data = #data{conn = Conn}) ->
     {keep_state, Data#data{ref = Ref}};
 pid_id_statement(info, {Conn, PidIdStatementRef, {ok, Statement}}, Data = #data{conn = Conn, ref = PidIdStatementRef}) ->
     {next_state, logging, Data#data{ref = undefined, pid_id_statement = Statement}};
-pid_id_statement(info, {Conn, PidIdStatementRef, Other}, #data{conn = Conn, ref = PidIdStatementRef}) ->
-    ct:pal("~p:~p: Result~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Other]),
+pid_id_statement(info, {Conn, PidIdStatementRef, _Other}, #data{conn = Conn, ref = PidIdStatementRef}) ->
     {stop, <<"failed to create pid_id statement">>};
 pid_id_statement(_, _Event, _Data) ->
     {keep_state_and_data, [postpone]}.
 
-logging(enter, _, _) ->
+logging(timeout, _, Data = #data{from = From}) ->
+    {keep_state, Data#data{from = undefined}, [{reply, From, done}]};
+logging(Whatever, Event, Data = #data{from = undefined}) ->
+    logging_(Whatever, Event, Data);
+logging(EventType, Event, Data) ->
+    TimeoutMillis = 2000,
+    case logging_(EventType, Event, Data) of
+        keep_state_and_data ->
+            {keep_state_and_data, [{timeout, TimeoutMillis, foo}]};
+        {keep_state, Data} ->
+            {keep_state, Data, [{timeout, TimeoutMillis, foo}]};
+        Other ->
+            Other
+    end.
+
+logging_(enter, _, _) ->
     keep_state_and_data;
 
-logging({call, From}, wait_ready, #data{}) ->
-    {keep_state_and_data, {reply, From, done}};
-logging({call, From}, {wait_for_db, Millis}, Data) ->
-    {next_state, waiting, Data #data{from = From}, _Timeout = Millis};
+logging_({call, From = {_Pid, _Ref}}, wait_ready, #data{}) ->
+    {keep_state_and_data, [{reply, From, done}]};
+logging_({call, From = {_Pid, _Ref}}, {wait_for_db, _Millis}, Data) ->
+    {keep_state, Data#data{from = From}, [{timeout, 500, bar}]};
 
-logging(cast, {insert_log, Values}, #data{conn = Conn, log_statement = Statement})
+logging_(cast, {insert_log, Values}, #data{conn = Conn, log_statement = Statement})
   when is_list(Values) ->
     insert(Values, Statement, Conn),
     keep_state_and_data;
-logging(cast, {insert_pid_id, Values}, #data{conn = Conn, pid_id_statement = Statement})
+logging_(cast, {insert_pid_id, Values}, #data{conn = Conn, pid_id_statement = Statement})
   when is_list(Values) ->
     insert(Values, Statement, Conn),
     keep_state_and_data;
 
-logging(info, {Conn, _Ref, {ok, _RowsInserted}}, #data{conn = Conn}) ->
+logging_(info, {Conn, _Ref, {ok, _RowsInserted}}, #data{conn = Conn}) ->
     keep_state_and_data;
-logging(info, {Conn, _Ref, {error, Error}}, #data{conn = Conn}) ->
-    ct:pal("~p Logging error: ~p", [self(), Error]),
+logging_(info, {Conn, _Ref, {error, Error}}, #data{conn = Conn}) ->
+    io:format("~p Logging error: ~p", [self(), Error]),
     keep_state_and_data;
 
-logging(Type, Event, _Data) ->
-    ct:pal("~p:~p: Unexpected Type ~p and Event ~p", [?MODULE, ?FUNCTION_NAME, Type, Event]),
+logging_(cast, {insert_log, Values}, #data{conn = Conn, log_statement = Statement})
+  when is_list(Values) ->
+    insert(Values, Statement, Conn),
+    keep_state_and_data;
+logging_(cast, {insert_pid_id, Values}, #data{conn = Conn, pid_id_statement = Statement})
+  when is_list(Values) ->
+    insert(Values, Statement, Conn),
+    keep_state_and_data;
+
+logging_(Type, Event, _Data) ->
+    io:format("~p:~p: Unexpected Type ~p and Event ~p", [?MODULE, ?FUNCTION_NAME, Type, Event]),
     keep_state_and_data.
-
-waiting(enter, _, _) ->
-    keep_state_and_data;
-waiting(timeout, _, Data = #data{from = From}) ->
-    ct:pal("~p timeout in waiting; sending 'done' back to ~p", [self(), From]),
-    {keep_state, Data#data{from = undefined}, {reply, From, done}};
-waiting(cast, {insert_log, _Values}, Data) ->
-    {next_state, logging, Data, postpone};
-waiting(cast, {insert_id_id, _Values}, Data) ->
-    {next_state, logging, Data, postpone}.
 
 insert(Values, Statement = #statement{types = Types}, Conn) ->
     TypedParameters = lists:zip(Types, Values),

@@ -52,5 +52,6 @@ wait_db_ready() ->
 
 wait_db_done(Millis) ->
     io:format(user, "Caller ~p waiting for DB to be finished~n", [self()]),
-    egre_postgres:wait_done(Millis),
-    io:format(user, "Caller ~p: DB finished~n", [self()]).
+    Result = egre_postgres:wait_done(Millis),
+    io:format(user, "Caller ~p: DB finished~n", [self()]),
+    Result.
