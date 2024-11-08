@@ -401,8 +401,8 @@ ensure_message(Msg, {RulesModule, {Result, Sub, Props}})
 ensure_message(Msg, {RulesModule, {Result, Sub, Props, Log}})
   when is_atom(Sub), is_list(Props), is_list(Log) ->
     {RulesModule, {Result, Msg, Sub, Props, Log}};
-ensure_message(_, T) ->
-    T.
+ensure_message(_, Tuple) ->
+    Tuple.
 
 ensure_log_props({Handler, {Result, Msg, Sub, Props}})
   when is_atom(Sub), is_tuple(Msg), is_list(Props) ->
