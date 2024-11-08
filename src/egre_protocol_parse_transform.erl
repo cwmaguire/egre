@@ -431,6 +431,10 @@ print({bin, _Line1, BinElements}) ->
 print({bin_element, _Line1, {string, _Line2, String}, _, _}) ->
     [<<"<<\"">>, list_to_binary(String), <<"\">>">>];
 
+% e.g. Match in binary: e.g. <<Bin/binary>>
+print({bin_element, _Line, {var, _line2, Var}, default, [binary]}) ->
+    [a2b(Var), <<"/binary">>];
+
 print({map, _Line1, Matches}) ->
     [<<"#{">>, map_separate(fun print/1, Matches), <<"}">>];
 
