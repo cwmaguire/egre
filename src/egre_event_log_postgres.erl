@@ -71,7 +71,8 @@ insert(Props, SerializeFun, Columns, Function) ->
     egre_postgres:Function(BinValues).
 
 default(Key, Props) ->
-    proplists:get_value(Key, Props, {<<"undefined">>, Key}).
+    %proplists:get_value(Key, Props, {<<"undefined">>, Key}).
+    proplists:get_value(Key, Props, <<"">>).
 
 to_binary(Values) ->
     iolist_to_binary(to_binary_(Values)).
