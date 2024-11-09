@@ -178,7 +178,7 @@ handle_cast_({fail, Reason, Msg},
             log([{tag, LogTag},
                  {stage, fail_stop},
                  {object, self()},
-                 {owner, proplists:get_value(owner, Props)},
+                 {owner, proplists:get_value(owner, Props, <<"">>)},
                  {message, Msg},
                  {stop_reason, Reason} |
                  Props ++ CustomProps ++ LogProps]),
@@ -328,7 +328,7 @@ attempt_(Msg,
          {stage, attempt},
          {object, self()},
          {message, Msg},
-         {rules_module, RulesModule},
+         {rules_module, rules_mod_suffix(RulesModule)},
          {subscribe, ShouldSubscribe},
          {room, Procs#procs.room} |
          Props2] ++
@@ -594,3 +594,13 @@ replace_pid(Prop, _, _) ->
 log(Props0) ->
     Props = egre_event_log:flatten(Props0),
     egre_event_log:log(debug, [{module, ?MODULE} | Props]).
+
+rules_mod_suffix(Module) when is_atom(Module) ->
+    case atom_to_list(Module) of
+        "rules_" ++ Suffix ->
+            Suffix;
+        _ ->
+            Module
+    end;
+rules_mod_suffix(Other) ->
+    Other.

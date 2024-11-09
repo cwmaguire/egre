@@ -3,6 +3,7 @@
          pid,
          event_type,
          stage,
+         subscribe,
          rules_module,
          event_source,
          event_target,

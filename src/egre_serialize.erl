@@ -44,7 +44,16 @@ ref2b(Ref) when is_reference(Ref) ->
     list_to_binary(ref_to_list(Ref)).
 
 p2b(Pid) when is_pid(Pid) ->
-    list_to_binary(pid_to_list(Pid)).
+    case list_to_binary(pid_to_list(Pid)) of
+        <<"<0.", Middle:3/binary, ".0>">> ->
+            Middle;
+        <<"<0.", Middle:2/binary, ".0>">> ->
+            Middle;
+        <<"<0.", Middle:1/binary, ".0>">> ->
+            Middle;
+        Other ->
+            Other
+    end.
 
 %a2b(Atom) when is_atom(Atom) ->
     %list_to_binary(atom_to_list(Atom)).

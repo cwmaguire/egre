@@ -70,6 +70,13 @@ insert(Props, SerializeFun, Columns, Function) ->
     BinValues = lists:map(fun to_binary/1, Values),
     egre_postgres:Function(BinValues).
 
+default(subscribe, Props) ->
+    case proplists:get_value(subscribe, Props) of
+        true ->
+            <<"Sub">>;
+        _ ->
+            <<"">>
+    end;
 default(Key, Props) ->
     %proplists:get_value(Key, Props, {<<"undefined">>, Key}).
     proplists:get_value(Key, Props, <<"">>).
@@ -81,6 +88,16 @@ to_binary_(Values) when is_list(Values) ->
     lists:map(fun to_binary/1, Values);
 to_binary_(Bin) when is_binary(Bin) ->
     Bin;
+to_binary_(undefined) ->
+    <<"">>;
+to_binary_(attempt) ->
+    <<"A  ">>;
+to_binary_(succeed) ->
+    <<" S ">>;
+to_binary_(succeed) ->
+    <<"  F">>;
+to_binary_(no_rules_module) ->
+    <<"_">>;
 to_binary_(Atom) when is_atom(Atom) ->
     atom_to_binary(Atom, utf8);
 to_binary_(Int) when is_integer(Int) ->
