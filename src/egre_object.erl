@@ -31,7 +31,7 @@
                 prop_extract_fun :: fun(),
                 log_tag :: atom()}).
 
--record(procs, {limit = undefined :: undefined | {atom(), integer(), atom()},
+-record(procs, {%limit = undefined :: undefined | {atom(), integer(), atom()},
                 room = undefined :: pid(),
                 done = [] :: ordsets:ordset(pid()),
                 next = [] :: ordsets:ordset(pid()),
@@ -77,16 +77,19 @@ populate(Pid, ProcIds) ->
     send(Pid, {populate, ProcIds}).
 
 attempt(Pid, Msg) ->
-    attempt(Pid, Msg, _ShouldSubscribe = true).
+    attempt(Pid, Msg, #{}, _ShouldSubscribe = true).
 
 attempt(Pid, Msg, ShouldSubscribe) ->
+    attempt(Pid, Msg, #{}, ShouldSubscribe).
+
+attempt(Pid, Msg, Context, ShouldSubscribe) ->
     Subs = case ShouldSubscribe of
                true ->
                    [self()];
                _ ->
                    []
            end,
-    send(Pid, {attempt, Msg, #procs{subs = Subs}}).
+    send(Pid, {attempt, Msg, Context, #procs{subs = Subs}}).
 
 attempt_after(Millis, Pid, Msg) ->
     attempt_after(Millis, Pid, Msg, _ShouldSubscribe = true).
@@ -158,48 +161,47 @@ handle_cast_({populate, ProcIds},
     {noreply, State#state{props = populate_(Props, ProcIds)}};
 handle_cast_({set, Prop = {K, _}}, State = #state{props = Props}) ->
     {noreply, State#state{props = lists:keystore(K, 1, Props, Prop)}};
-handle_cast_({attempt, Msg, Procs}, State = #state{props = Props}) ->
-    %ct:pal("~p:handle_cast_({attempt, ~p, ...~n", [?MODULE, Msg]),
+handle_cast_({attempt, Event, Context, Procs}, State = #state{props = Props}) ->
     IsExit = proplists:get_value(is_exit, Props, false),
-    case maybe_attempt(Msg, Procs, IsExit, State) of
+    case maybe_attempt(Event, Context, Procs, IsExit, State) of
         Stop = {stop, _, _} ->
             Stop;
         Continue = {noreply, #state{props = Props2}} ->
             egre_index:put(Props2),
             Continue
     end;
-handle_cast_({fail, Reason, Msg},
+handle_cast_({fail, Reason, Event, Context},
              State = #state{prop_extract_fun = PropExtractFun,
                             log_tag = LogTag}) ->
-    case fail(Reason, Msg, State) of
-        {stop, Props, LogProps} ->
+    case fail(Reason, Event, Context, State) of
+        {stop, _Event, _Context, Props, LogProps} ->
             {_, CustomProps} = PropExtractFun(Props),
             egre_index:put(Props),
             log([{tag, LogTag},
                  {stage, fail_stop},
                  {object, self()},
                  {owner, proplists:get_value(owner, Props, <<"">>)},
-                 {message, Msg},
+                 {message, Event},
                  {stop_reason, Reason} |
                  Props ++ CustomProps ++ LogProps]),
             egre_index:put(Props),
             % FIXME I think this will just cause the supervisor to restart it
             % Probably need to tell the supervisor to kill us
             {stop, {shutdown, Reason}, State#state{props = Props}};
-        {Props, _, _, LogProps} ->
+        {Props, _Reason, _Event, _Context, LogProps} ->
             {_, CustomProps} = PropExtractFun(Props),
             log([{stage, fail},
                  {object, self()},
-                 {message, Msg},
+                 {message, Event},
                  {stop_reason, Reason} |
                  Props ++ CustomProps ++ LogProps]),
             egre_index:put(Props),
             {noreply, State#state{props = Props}}
     end;
-handle_cast_({succeed, Msg},
+handle_cast_({succeed, Msg, Context},
              State = #state{prop_extract_fun = PropExtractFun,
                             log_tag = LogTag}) ->
-    case succeed(Msg, State) of
+    case succeed(Msg, Context, State) of
         {stop, Reason, Props, LogProps} ->
             {_, CustomProps} = PropExtractFun(Props),
             log([{tag, LogTag},
@@ -287,19 +289,20 @@ code_change(_OldVsn, State, _Extra) ->
 %% internal
 
 maybe_attempt(Msg,
+              Context,
               Procs = #procs{room = Room},
               _IsExit = true,
               State = #state{props = Props})
         when Room  /= undefined ->
     _ = case exit_has_room(Props, Room) of
             true ->
-                attempt_(Msg, Procs, State);
+                attempt_(Msg, Context, Procs, State);
             false ->
-                _ = handle(succeed, Msg, done(self(), Procs), Props),
+                _ = handle(succeed, Msg, Context, done(self(), Procs), Props),
                 State
         end;
-maybe_attempt(Msg, Procs, _, State) ->
-    attempt_(Msg, Procs, State).
+maybe_attempt(Msg, Context, Procs, _, State) ->
+    attempt_(Msg, Context, Procs, State).
 
 exit_has_room(Props, Room) ->
     HasRoom = fun({{room, _}, R}) ->
@@ -309,25 +312,31 @@ exit_has_room(Props, Room) ->
               end,
     lists:any(HasRoom, Props).
 
-attempt_(Msg,
+attempt_(Event,
+         Context,
          Procs,
          State = #state{props = Props,
                         prop_extract_fun = PropExtractFun,
                         log_tag = LogTag}) ->
-    {Record, CustomProps} = PropExtractFun(Props),
+    {CustomData, CustomProps} = PropExtractFun(Props),
     {RulesModule,
-     Results = {Result,
-                Msg2,
-                ShouldSubscribe,
-                Props2,
-                LogProps}}
-      = ensure_log_props(
-          ensure_message(Msg,
-                         run_rules({Record, Props, Msg}))),
+     Results = #result{result = Result,
+                       event = Event2,
+                       context = Context2,
+                       subscribe = ShouldSubscribe,
+                       props = Props2,
+                       log = LogProps}}
+      = ensure_context(Context,
+          ensure_event(Event,
+                       run_rules({CustomData,
+                                  Props,
+                                  Event,
+                                  Context}))),
+    %ct:pal("~p:~p: Results~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Results]),
     log([{tag, LogTag},
          {stage, attempt},
          {object, self()},
-         {message, Msg},
+         {message, Event},
          {rules_module, rules_mod_suffix(RulesModule)},
          {subscribe, ShouldSubscribe},
          {room, Procs#procs.room} |
@@ -335,13 +344,10 @@ attempt_(Msg,
          CustomProps ++
          LogProps ++
          result_tuples(Result)),
-    %ct:pal("~p:~p: PREMERGE: Self = ~p; Msg = ~p; Procs~n\t~p~nResult: ~p~n",
-           %[?MODULE, ?FUNCTION_NAME, self(), Msg, Procs, Result]),
+
     MergedProcs = merge(self(), is_room(Props), Results, Procs),
-    %ct:pal("~p:~p: Self = ~p; Msg = ~p; MergedProcs~n\t~p~n",
-           %[?MODULE, ?FUNCTION_NAME, self(), Msg, MergedProcs]),
     State2 = State#state{props = Props2},
-    case handle(Result, Msg2, MergedProcs, Props2) of
+    case handle(Result, Event2, Context2, MergedProcs, Props2) of
         stop ->
             % XXX I don't think I should be stopping processes on attempt
 
@@ -376,18 +382,20 @@ result_tuples({broadcast, Message}) ->
 result_tuples(stop) ->
     [{result, stop}].
 
-run_rules(Attempt = {_, Props, _}) ->
+run_rules(Attempt = {_, Props, _, _}) ->
     RulesModules = proplists:get_value(rules, Props),
     handle_attempt(RulesModules, Attempt).
 
 handle_attempt(undefined, _) ->
     throw(missing_rules_property_in_object);
-handle_attempt([], {_, Props, _}) ->
-    _DefaultResponse = {no_rules_module, {succeed, false, Props}};
+handle_attempt([], {_Custom, Props, Event, Context}) ->
+    _DefaultResponse =
+        {no_rules_module,
+         #result{subscribe = false,
+                 event = Event,
+                 props = Props,
+                 context = Context}};
 handle_attempt([RulesModule | RulesModules], Attempt) ->
-    %{_, Props, _} = Attempt,
-    %Name = proplists:get_value(name, Props, "___"),
-    %log([Name, self(), <<" running rules ">>, Rules]),
     case RulesModule:attempt(Attempt) of
         undefined ->
             handle_attempt(RulesModules, Attempt);
@@ -395,49 +403,43 @@ handle_attempt([RulesModule | RulesModules], Attempt) ->
             {RulesModule, Result}
     end.
 
-ensure_message(Msg, {RulesModule, {Result, Sub, Props}})
-  when is_atom(Sub), is_list(Props) ->
-    {RulesModule, {Result, Msg, Sub, Props}};
-ensure_message(Msg, {RulesModule, {Result, Sub, Props, Log}})
-  when is_atom(Sub), is_list(Props), is_list(Log) ->
-    {RulesModule, {Result, Msg, Sub, Props, Log}};
-ensure_message(_, Tuple) ->
+ensure_event(Event, {RulesModule, Result = #result{event = undefined}}) ->
+    {RulesModule, Result#result{event = Event}};
+ensure_event(_, Tuple) ->
     Tuple.
 
-ensure_log_props({Handler, {Result, Msg, Sub, Props}})
-  when is_atom(Sub), is_tuple(Msg), is_list(Props) ->
-    {Handler, {Result, Msg, Sub, Props, []}};
-ensure_log_props(WithLogProps) ->
-    WithLogProps.
+ensure_context(Context, {RulesModule, Result = #result{context = undefined}}) ->
+    {RulesModule, Result#result{context = Context}};
+ensure_context(_, Tuple) ->
+    Tuple.
 
-
-handle({resend, Target, Msg}, _OrigMsg, _NoProcs, _Props) ->
-    send(Target, {attempt, Msg, #procs{}});
-handle({fail, Reason}, Msg, Procs = #procs{subs = Subs}, _Props) ->
-    [send(Sub, {fail, Reason, Msg}, Procs) || Sub <- Subs];
-handle(succeed, Msg, Procs = #procs{subs = Subs}, _Props) ->
+handle({resend, Target, Event}, _OrigEvent, Context, _NoProcs, _Props) ->
+    send(Target, {attempt, Event, Context, #procs{}});
+handle({fail, Reason}, Event, Context, Procs = #procs{subs = Subs}, _Props) ->
+    [send(Sub, {fail, Reason, Event, Context}, Procs) || Sub <- Subs];
+handle(succeed, Event, Context, Procs = #procs{subs = Subs}, _Props) ->
     _ = case next(Procs) of
         {Next, Procs2} ->
-            send(Next, {attempt, Msg, Procs2});
+            send(Next, {attempt, Event, Context, Procs2});
         none ->
-            [send(Sub, {succeed, Msg}, Procs) || Sub <- Subs]
+            [send(Sub, {succeed, Event, Context}, Procs) || Sub <- Subs]
     end;
-handle({broadcast, Msg}, _Msg, _Procs, Props) ->
-    [broadcast(Pid, Msg) || Pid <- pids(Props, broadcast_pid_filter)];
+handle({broadcast, Event}, _OrigEvent, Context, _Procs, Props) ->
+    [broadcast(Pid, Event, Context) || Pid <- pids(Props, broadcast_pid_filter)];
 % XXX what's this used by?
-handle(stop, _Msg, _Procs, Props) ->
-    [broadcast(Proc, stop) || Proc <- pids(Props, stop_pid_filter)],
+handle(stop, _Event, Context, _Procs, Props) ->
+    [broadcast(Proc, stop, Context) || Proc <- pids(Props, stop_pid_filter)],
     stop.
 
-broadcast(Pid, Msg) ->
-    attempt_after(0, Pid, Msg).
+broadcast(Pid, Event, Context) ->
+    attempt_after(0, Pid, Event, Context).
 
-send(Pid, SendMsg = {fail, _Reason, _Msg}, _Procs) ->
+send(Pid, SendMsg = {fail, _Reason, _Event, _Context}, _Procs) ->
     send_(Pid, SendMsg);
-send(Pid, SendMsg = {succeed, _Msg}, _Procs) ->
+send(Pid, SendMsg = {succeed, _Event, _Context}, _Procs) ->
     send_(Pid, SendMsg).
 
-send(Pid, SendMsg = {attempt, _Msg, _Procs}) ->
+send(Pid, SendMsg = {attempt, _Event, _Context, _Procs}) ->
     send_(Pid, SendMsg);
 send(Pid, Msg) ->
     send_(Pid, Msg).
@@ -472,22 +474,19 @@ default_pid_filter({_, {Pid, Ref}}) when is_pid(Pid), is_reference(Ref) ->
 default_pid_filter(_) ->
     false.
 
-merge(_, _, {{resend, _, _, _}, _, _, _, _}, _) ->
+merge(_Self, _IsRoom, #result{result = {resend, _, _}}, _Props) ->
     undefined;
-merge(_, _, {{broadcast, _}, _, _, _, _}, _) ->
+merge(_Self, _IsRoom, #result{result = {broadcast, _}}, _Props) ->
     undefined;
 merge(Self,
       IsRoom = true,
-      Results,
+      Result,
       Procs = #procs{room = undefined}) ->
-    merge(Self, IsRoom, Results, Procs#procs{room = Self});
+    merge(Self, IsRoom, Result, Procs#procs{room = Self});
 merge(Self,
       _,
-      {_,
-       _,
-       ShouldSubscribe,
-       Props,
-       _},
+      #result{subscribe = ShouldSubscribe,
+              props = Props},
       Procs = #procs{}) ->
     merge_(Self,
            sub(Procs, ShouldSubscribe),
@@ -520,22 +519,24 @@ next(Procs = #procs{next = NextSet}) ->
             {NextProc, Procs#procs{next = ordsets:del_element(NextProc, Next)}}
     end.
 
-succeed(Message, #state{props = Props}) ->
+succeed(Message, Context, #state{props = Props}) ->
     Rules = proplists:get_value(rules, Props),
-    handle_success(Rules, {Props, [], Message}).
+    handle_success(Rules, {Props, [], Message, Context}).
 
-handle_success(_NoMoreRules = [], {Props, LogProps, _Message}) ->
+handle_success(_NoMoreRules = [], {Props, LogProps, _Message, _Context}) ->
     {Props, LogProps};
-handle_success([Handler | Rules], {Props, LogProps, Message}) ->
-    case Handler:succeed({Props, Message}) of
+handle_success([RulesModule | Rules], {Props, LogProps, Message, Context}) ->
+    case RulesModule:succeed({Props, Message, Context}) of
+        undefined ->
+            handle_success(Rules, {Props, LogProps, Message, Context});
         {stop, Reason, Props2, LogProps2} ->
             MergedLogProps = merge_log_props(LogProps, LogProps2),
             {stop, Reason, Props2, MergedLogProps};
         {Props2, LogProps2} ->
             MergedLogProps = merge_log_props(LogProps, LogProps2),
-            handle_success(Rules, {Props2, MergedLogProps, Message});
+            handle_success(Rules, {Props2, MergedLogProps, Message, Context});
         Props2 ->
-            handle_success(Rules, {Props2, LogProps, Message})
+            handle_success(Rules, {Props2, LogProps, Message, Context})
     end.
 
 merge_log_props(Logs1, Logs2) ->
@@ -543,19 +544,21 @@ merge_log_props(Logs1, Logs2) ->
                    lists:keysort(1, Logs1),
                    lists:keysort(1, Logs2)).
 
-fail(Reason, Message, #state{props = Props}) ->
+fail(Reason, Event, Context, #state{props = Props}) ->
     Rules = proplists:get_value(rules, Props),
-    Acc = {Props, Reason, Message, _LogProps = []},
+    Acc = {Props, Reason, Event, Context, _LogProps = []},
     lists:foldl(fun handle_fail/2, Acc, Rules).
 
-handle_fail(_, Response = {stop, _Props, _LogProps}) ->
+handle_fail(_, Response = {stop, _Event, _Context, _Props, _LogProps}) ->
     Response;
-handle_fail(HandlerModule, {Props, Reason, Message, LogProps}) ->
-    case HandlerModule:fail({Props, Reason, Message}) of
+handle_fail(RulesModule, {Props, Reason, Event, Context, LogProps}) ->
+    case RulesModule:fail({Props, Reason, Event, Context}) of
+        undefined ->
+            {Props, Reason, Event, Context, LogProps};
         {Props2, LogProps2} ->
-            {Props2, Reason, Message, LogProps ++ LogProps2};
+            {Props2, Reason, Event, Context, LogProps ++ LogProps2};
         Props2 ->
-            {Props2, Reason, Message, LogProps}
+            {Props2, Reason, Event, Context, LogProps}
     end.
 
 value(Prop, Props, integer) ->
