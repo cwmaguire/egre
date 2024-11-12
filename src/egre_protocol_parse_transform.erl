@@ -77,19 +77,23 @@ attempt_clause({clause, _Line1, [{var, _Line2, _Var}], _, _}, _State) ->
     [];
 
 %% We don't need to see catch-all clauses in the protocol
-%% attempt({_, _, _Msg}) -> ...
+%% attempt({_, _, _Msg, _}) -> ...
 attempt_clause({clause,
                 _Line1,
-                [{tuple, _Line2, [{var, _Line3, '_'}, {var, _Line4, '_'}, {var, _Line5, '_Msg'}]}],
+                [{tuple, _Line2, [{var, _Line3, '_'}, {var, _Line4, '_'}, {var, _Line5, '_Msg'}, {var, _Line6, '_'}]}],
                 _GuardGroups,
                 _Body}, _State) ->
     [];
 
 %% We don't need to see catch-all clauses in the protocol
-%% attempt(_Foo = {_, _, _Msg}) -> ...
+%% attempt(_Foo = {_, _, _Msg, _}) -> ...
 attempt_clause({clause,
                 _Line1,
-                [{match, _Line2, {var, _, _}, {tuple, _Line3, [{var, _Line4, '_'}, {var, _Line5, '_'}, {var, _Line6, '_Msg'}]}}],
+                [{match, _Line2, {var, _, _},
+                  {tuple, _Line3, [{var, _Line4, '_'},
+                                   {var, _Line5, '_'},
+                                   {var, _Line6, '_Msg'},
+                                   {var, _Line7, '_'}]}}],
                 _GuardGroups,
                 _Body}, _State) ->
     [];
@@ -99,16 +103,16 @@ attempt_clause({clause,
 %% attempt(Parents, Props, Message = {Bar, baz, Quux}) -> ...
 attempt_clause({clause,
                 Line1,
-                [{tuple, Line2, [Parents, Props, {match, _Line3, {var, _, _}, Event}]}],
+                [{tuple, Line2, [CustomData, Props, {match, _Line3, {var, _, _}, Event}]}],
                 GuardGroups,
                 Body},
                State) ->
-    attempt_clause({clause, Line1, [{tuple, Line2, [Parents, Props, Event]}], GuardGroups, Body}, State);
+    attempt_clause({clause, Line1, [{tuple, Line2, [CustomData, Props, Event]}], GuardGroups, Body}, State);
 
 attempt_clause({clause, _Line, Head, GuardGroups, Body}, State) ->
-    [{tuple, _Line2, [Parents, Props, Event]}] = Head,
+    [{tuple, _Line2, [CustomData, Props, Event, Context]}] = Head,
 
-    {AttemptHeadExprs, State1} = attempt_head(Parents, Props, Event, State),
+    {AttemptHeadExprs, State1} = attempt_head(CustomData, Props, Event, Context, State),
     {GuardGroupExprs, State2} =  guard_groups(GuardGroups, State1),
     {BodyExprs, State3} = loop_with_state(Body, fun search/2, State2),
 
@@ -157,33 +161,39 @@ attempt_clause({clause, _Line, Head, GuardGroups, Body}, State) ->
     % or succeed clause is stored in the state.
     [Attempt,  BodyExprs, MaybeResentOrBroadcastEvent].
 
-attempt_head(Parents, Props, Event, State) ->
+attempt_head(CustomData, Props, Event, Context, State) ->
     %{Parents, Props, Event}.
-    ParentsBin = print(Parents),
+    CustomDataBin = print(CustomData),
     PropsBin = print(Props),
     EventBin = print(Event),
-    Output = separate(<<"|">>, [ParentsBin, PropsBin, EventBin]),
+    ContextBin = print(Context),
+    Output = separate(<<"|">>, [CustomDataBin, PropsBin, EventBin, ContextBin]),
     {Output, State#{event => EventBin}}.
 
 %% I don't think you can get a function clause without a name
 %succeed_clause({clause, _Line, Head, GuardGroups, Body}) ->
     %succeed_clause('', {clause, _Line, Head, GuardGroups, Body}).
 
+succeed_clause({clause, _Line1, [{var, _Line2, '_'}], _, _}, _State) ->
+    [];
+
 %% We don't need to see catch-all clauses in the protocol
 %% succeed({AnyVAr, _}) -> ...
-succeed_clause({clause, _Line1, [{tuple, _Line2, [_Props, {var, _Line3, Ignored}]}], _, _}, _State)
+succeed_clause({clause, _Line1, [{tuple, _Line2, [_Props, {var, _Line3, Ignored}, _Context]}], _, _}, _State)
   when Ignored == '_';
        Ignored == '_Msg';
        Ignored == '_Other' ->
     [];
 
-succeed_clause({clause, _Line1, [{tuple, _Line2, [Props, {match, _Line3, {var, _Line4, 'Msg'}, Event}]}], GuardGroups, Body}, State) ->
-    succeed_clause({clause, 0, [{tuple, 0, [Props, Event]}], GuardGroups, Body}, State);
+succeed_clause({clause, _Line1,
+                [{tuple, _Line2, [Props, {match, _Line3, {var, _Line4, 'Msg'}, Event}, Context]}],
+                GuardGroups, Body}, State) ->
+    succeed_clause({clause, 0, [{tuple, 0, [Props, Event, Context]}], GuardGroups, Body}, State);
 
 succeed_clause({clause, _Line0, Head, GuardGroups, Body}, State) ->
-    [{tuple, _Line1, [Props, Event]}] = Head,
+    [{tuple, _Line1, [Props, Event, Context]}] = Head,
 
-    {SucceedHeadExprs, State1} = succeed_head(Props, Event, State),
+    {SucceedHeadExprs, State1} = succeed_head(Props, Event, Context, State),
     {GuardGroupsExprs, State2} = guard_groups(GuardGroups, State1),
 
     Succeed = [maps:get(module, State2),
@@ -198,11 +208,12 @@ succeed_clause({clause, _Line0, Head, GuardGroups, Body}, State) ->
     {BodyExprs, _State} = loop_with_state(Body, fun search/2, State2),
     [Succeed | BodyExprs].
 
-succeed_head(Props, Event, State) ->
+succeed_head(Props, Event, Context, State) ->
     PropBin = print(Props),
     EventBin = print(Event),
+    ContextBin = print(Context),
 
-    CSVOutput = separate(<<"|">>, [PropBin, EventBin]),
+    CSVOutput = separate(<<"|">>, [PropBin, EventBin, ContextBin]),
     {CSVOutput, State}.
 
 case_clause({clause, _Line, [Head], _GuardGroups, Body}, State) ->

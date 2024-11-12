@@ -20,6 +20,13 @@
         {old_pid :: pid(),
          new_pid :: pid()}).
 
+-record(result,
+        {result = succeed :: atom(),
+         subscribe = true :: boolean(),
+         event :: undefined | tuple(),
+         props = [] :: list(),
+         log = [] :: list(),
+         context = undefined :: undefined | map()}).
 
 -define(EVENT, event_type).
 -define(SOURCE, event_source).
