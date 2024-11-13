@@ -10,6 +10,7 @@
 -export([populate/2]).
 -export([attempt/2]).
 -export([attempt/3]).
+-export([attempt/4]).
 -export([attempt_after/3]).
 -export([attempt_after/4]).
 -export([set/2]).
@@ -77,19 +78,19 @@ populate(Pid, ProcIds) ->
     send(Pid, {populate, ProcIds}).
 
 attempt(Pid, Msg) ->
-    attempt(Pid, Msg, #{}, _ShouldSubscribe = true).
+    attempt(Pid, Msg, [], _ShouldSubscribe = true).
 
 attempt(Pid, Msg, ShouldSubscribe) ->
-    attempt(Pid, Msg, #{}, ShouldSubscribe).
+    attempt(Pid, Msg, [], ShouldSubscribe).
 
-attempt(Pid, Msg, Context, ShouldSubscribe) ->
+attempt(Pid, Event, Context, ShouldSubscribe) ->
     Subs = case ShouldSubscribe of
                true ->
                    [self()];
                _ ->
                    []
            end,
-    send(Pid, {attempt, Msg, Context, #procs{subs = Subs}}).
+    send(Pid, {attempt, Event, Context, #procs{subs = Subs}}).
 
 attempt_after(Millis, Pid, Msg) ->
     attempt_after(Millis, Pid, Msg, _ShouldSubscribe = true).

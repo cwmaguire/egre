@@ -9,6 +9,7 @@
 -export([start_object/1]).
 -export([attempt/2]).
 -export([attempt/3]).
+-export([attempt/4]).
 -export([register_logger/2]).
 -export([wait_db_ready/0]).
 -export([wait_db_done/1]).
@@ -40,7 +41,10 @@ attempt(ObjectPid, Event) ->
     attempt(ObjectPid, Event, true).
 
 attempt(ObjectPid, Event, ShouldSubscribe) ->
-    egre_object:attempt(ObjectPid, Event, ShouldSubscribe).
+    attempt(ObjectPid, Event, [], ShouldSubscribe).
+
+attempt(ObjectPid, Event, Context, ShouldSubscribe) ->
+    egre_object:attempt(ObjectPid, Event, Context, ShouldSubscribe).
 
 register_logger(json, Fun) ->
     egre_event_log_json:register_logger(Fun).

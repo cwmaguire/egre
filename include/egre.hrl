@@ -26,7 +26,7 @@
          event :: undefined | tuple(),
          props = [] :: list(),
          log = [] :: list(),
-         context = undefined :: undefined | map()}).
+         context = undefined :: undefined | proplist()}).
 
 -define(EVENT, event_type).
 -define(SOURCE, event_source).
