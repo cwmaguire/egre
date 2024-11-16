@@ -92,9 +92,11 @@ to_binary_(undefined) ->
     <<"">>;
 to_binary_(attempt) ->
     <<"A  ">>;
+to_binary_(attempt_after) ->
+    <<"Aa ">>;
 to_binary_(succeed) ->
     <<" S ">>;
-to_binary_(succeed) ->
+to_binary_(fail) ->
     <<"  F">>;
 to_binary_(no_rules_module) ->
     <<"_">>;
