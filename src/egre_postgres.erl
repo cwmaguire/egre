@@ -38,7 +38,7 @@ wait_ready() ->
     gen_statem:call(?MODULE, wait_ready).
 
 wait_done(TimeoutMillis) ->
-    gen_statem:call(?MODULE, {wait_for_db, TimeoutMillis}).
+    gen_statem:call(?MODULE, {wait_for_db, TimeoutMillis}, 5000).
 
 start_link() ->
     gen_statem:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -127,8 +127,8 @@ logging_(enter, _, _) ->
 
 logging_({call, From = {_Pid, _Ref}}, wait_ready, #data{}) ->
     {keep_state_and_data, [{reply, From, done}]};
-logging_({call, From = {_Pid, _Ref}}, {wait_for_db, _Millis}, Data) ->
-    {keep_state, Data#data{from = From}, [{timeout, 500, bar}]};
+logging_({call, From = {_Pid, _Ref}}, {wait_for_db, Millis}, Data) ->
+    {keep_state, Data#data{from = From}, [{timeout, Millis, bar}]};
 
 logging_(cast, {insert_log, Values}, #data{conn = Conn, log_statement = Statement})
   when is_list(Values) ->
