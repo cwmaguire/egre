@@ -38,7 +38,9 @@ wait_ready() ->
     gen_statem:call(?MODULE, wait_ready).
 
 wait_done(TimeoutMillis) ->
-    gen_statem:call(?MODULE, {wait_for_db, TimeoutMillis}, 5000).
+    gen_statem:call(?MODULE,
+                    {wait_for_db, TimeoutMillis},
+                    TimeoutMillis + 100).
 
 start_link() ->
     gen_statem:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -112,7 +114,10 @@ logging(timeout, _, Data = #data{from = From}) ->
 logging(Whatever, Event, Data = #data{from = undefined}) ->
     logging_(Whatever, Event, Data);
 logging(EventType, Event, Data) ->
-    TimeoutMillis = 2000,
+    %% TODO keep track of how much of the original timeout is left
+    %% so that we don't keep adding X milliseconds every time we process
+    %% a message
+    TimeoutMillis = 30,
     case logging_(EventType, Event, Data) of
         keep_state_and_data ->
             {keep_state_and_data, [{timeout, TimeoutMillis, foo}]};
