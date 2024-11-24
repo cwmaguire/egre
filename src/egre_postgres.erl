@@ -26,7 +26,9 @@
                ref :: reference(),
                log_statement :: epgsql:statement(),
                pid_id_statement :: epgsql:statement(),
-               from :: pid()}).
+               from :: pid(),
+               wait_time :: integer(),
+               wait_start_time :: integer()}).
 
 insert_log(Values) ->
     gen_statem:cast(?MODULE, {insert_log, Values}).
@@ -40,7 +42,7 @@ wait_ready() ->
 wait_done(TimeoutMillis) ->
     gen_statem:call(?MODULE,
                     {wait_for_db, TimeoutMillis},
-                    TimeoutMillis + 100).
+                    trunc(TimeoutMillis * 1.1)).
 
 start_link() ->
     gen_statem:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -109,22 +111,28 @@ pid_id_statement(info, {Conn, PidIdStatementRef, _Other}, #data{conn = Conn, ref
 pid_id_statement(_, _Event, _Data) ->
     {keep_state_and_data, [postpone]}.
 
-logging(timeout, _, Data = #data{from = From}) ->
-    {keep_state, Data#data{from = undefined}, [{reply, From, done}]};
+logging(timeout, _, #data{from = From}) ->
+    {stop_and_reply, normal, [{reply, From, done}]};
 logging(Whatever, Event, Data = #data{from = undefined}) ->
     logging_(Whatever, Event, Data);
-logging(EventType, Event, Data) ->
-    %% TODO keep track of how much of the original timeout is left
-    %% so that we don't keep adding X milliseconds every time we process
-    %% a message
-    TimeoutMillis = 30,
-    case logging_(EventType, Event, Data) of
-        keep_state_and_data ->
-            {keep_state_and_data, [{timeout, TimeoutMillis, foo}]};
-        {keep_state, Data} ->
-            {keep_state, Data, [{timeout, TimeoutMillis, foo}]};
-        Other ->
-            Other
+logging(EventType, Event, Data = #data{wait_start_time = WaitStartTime,
+                                       wait_time = WaitTime,
+                                       from = From}) ->
+    CurrentTime = erlang:monotonic_time(millisecond),
+    MillisSpent = CurrentTime - WaitStartTime,
+    MillisLeft = WaitTime - MillisSpent,
+    case MillisLeft of
+        None when None =< 0 ->
+            {stop_and_reply, normal, [{reply, From, done}]};
+        _ ->
+            case logging_(EventType, Event, Data) of
+                keep_state_and_data ->
+                    {keep_state_and_data, [{timeout, MillisLeft, foo}]};
+                {keep_state, Data} ->
+                    {keep_state, Data, [{timeout, MillisLeft, foo}]};
+                Other ->
+                    Other
+            end
     end.
 
 logging_(enter, _, _) ->
@@ -133,7 +141,10 @@ logging_(enter, _, _) ->
 logging_({call, From = {_Pid, _Ref}}, wait_ready, #data{}) ->
     {keep_state_and_data, [{reply, From, done}]};
 logging_({call, From = {_Pid, _Ref}}, {wait_for_db, Millis}, Data) ->
-    {keep_state, Data#data{from = From}, [{timeout, Millis, bar}]};
+    {keep_state, Data#data{from = From,
+                           wait_time = Millis,
+                           wait_start_time = erlang:monotonic_time(millisecond)},
+     [{timeout, Millis, bar}]};
 
 logging_(cast, {insert_log, Values}, #data{conn = Conn, log_statement = Statement})
   when is_list(Values) ->
