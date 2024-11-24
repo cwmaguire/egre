@@ -456,6 +456,13 @@ set_pid(Prop = {id, _V}, {IdPids, Props}) ->
     {IdPids, [Prop | Props]};
 set_pid({K, {{pid, V1}, V2}}, {IdPids, Props}) ->
     {IdPids, [{K, {maybe_proc(V1, IdPids), V2}} | Props]};
+set_pid({K, Map}, {IdPids, Props}) ->
+    Map2 = maps:fold(fun(K, V, Map) ->
+                             Map#{maybe_proc(K, IdPids) => V}
+                     end,
+                     #{},
+                     Map),
+    {IdPids, [{K, Map2} | Props]};
 set_pid({K, V}, {IdPids, Props}) ->
     {IdPids, [{K, maybe_proc(V, IdPids)} | Props]}.
 
