@@ -396,13 +396,19 @@ handle_attempt([], {_Custom, Props, Event, Context}) ->
                  event = Event,
                  props = Props,
                  context = Context}};
-handle_attempt([RulesModule | RulesModules], Attempt) ->
-    case RulesModule:attempt(Attempt) of
+handle_attempt([MapOrModule | RulesModules], Attempt) ->
+    {Module, Fun} = attempt_function(MapOrModule),
+    case Fun(Attempt) of
         undefined ->
             handle_attempt(RulesModules, Attempt);
         Result ->
-            {RulesModule, Result}
+            {Module, Result}
     end.
+
+attempt_function(#{attempt := {ModuleName, Fun}}) ->
+    {ModuleName, Fun};
+attempt_function(Module) when is_atom(Module) ->
+    {Module, fun Module:attempt/1}.
 
 ensure_event(Event, {RulesModule, Result = #result{event = undefined}}) ->
     {RulesModule, Result#result{event = Event}};
@@ -533,8 +539,9 @@ succeed(Message, Context, #state{props = Props}) ->
 
 handle_success(_NoMoreRules = [], {Props, LogProps, _Message, _Context}) ->
     {Props, LogProps};
-handle_success([RulesModule | Rules], {Props, LogProps, Message, Context}) ->
-    case RulesModule:succeed({Props, Message, Context}) of
+handle_success([MapOrMod | Rules], {Props, LogProps, Message, Context}) ->
+    SucceedFun = succeed_function(MapOrMod),
+    case SucceedFun({Props, Message, Context}) of
         undefined ->
             handle_success(Rules, {Props, LogProps, Message, Context});
         {stop, Reason, Props2, LogProps2} ->
@@ -546,6 +553,11 @@ handle_success([RulesModule | Rules], {Props, LogProps, Message, Context}) ->
         Props2 ->
             handle_success(Rules, {Props2, LogProps, Message, Context})
     end.
+
+succeed_function(#{succeed := Fun}) ->
+    Fun;
+succeed_function(Module) when is_atom(Module) ->
+    fun Module:succeed/1.
 
 merge_log_props(Logs1, Logs2) ->
     lists:keymerge(1,
@@ -559,8 +571,9 @@ fail(Reason, Event, Context, #state{props = Props}) ->
 
 handle_fail(_, Response = {stop, _Event, _Context, _Props, _LogProps}) ->
     Response;
-handle_fail(RulesModule, {Props, Reason, Event, Context, LogProps}) ->
-    case RulesModule:fail({Props, Reason, Event, Context}) of
+handle_fail(MapOrMod, {Props, Reason, Event, Context, LogProps}) ->
+    FailFun = fail_function(MapOrMod),
+    case FailFun({Props, Reason, Event, Context}) of
         undefined ->
             {Props, Reason, Event, Context, LogProps};
         {Props2, LogProps2} ->
@@ -568,6 +581,11 @@ handle_fail(RulesModule, {Props, Reason, Event, Context, LogProps}) ->
         Props2 ->
             {Props2, Reason, Event, Context, LogProps}
     end.
+
+fail_function(#{fail := Fun}) ->
+    Fun;
+fail_function(Module) when is_atom(Module) ->
+    fun Module:fail/1.
 
 value(Prop, Props, integer) ->
     prop(Prop, Props, fun is_integer/1, 0);
