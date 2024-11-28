@@ -3,6 +3,7 @@
 
 -include("egre.hrl").
 
+-export([set/2]).
 -export([create_graph/1]).
 -export([get_object/1]).
 -export([get_object_pid/1]).
@@ -37,13 +38,18 @@ get_object(Pid) ->
 get_object_pid(Id) ->
     egre_index:get_pid(Id).
 
+set(Pid, Property) ->
+    egre_object:set(Pid, Property).
+
 -spec attempt(pid(), tuple()) -> any().
 attempt(ObjectPid, Event) ->
     attempt(ObjectPid, Event, true).
 
+-spec attempt(pid(), tuple(), boolean()) -> any().
 attempt(ObjectPid, Event, ShouldSubscribe) ->
     attempt(ObjectPid, Event, [], ShouldSubscribe).
 
+-spec attempt(pid(), tuple(), map(), boolean()) -> any().
 attempt(ObjectPid, Event, Context, ShouldSubscribe) ->
     egre_object:attempt(ObjectPid, Event, Context, ShouldSubscribe).
 
