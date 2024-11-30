@@ -2,6 +2,20 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2024-11-28   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+If the first process to see an attempt fails that attempt, then no other
+process has a chance to subscribe to it. Currently, this means that we
+can't have any game logic that relies on every object in the area hearing
+about a failure: e.g. failure to unlock a door. For now, we'd have to
+propagate a new event to notify other objects of the failure.
+
+The only time an object is guaranteed to see the failure of an event is if
+it created the event and subscribed to it on creation. Well, the object
+that fails the attempt also sees it.
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2024-03-22   ┃
 ┗━━━━━━━━━━━━━━━━┛
 
