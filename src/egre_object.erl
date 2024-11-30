@@ -175,7 +175,7 @@ handle_cast_({fail, Reason, Event, Context},
              State = #state{prop_extract_fun = PropExtractFun,
                             log_tag = LogTag}) ->
     case fail(Reason, Event, Context, State) of
-        {stop, _Event, _Context, Props, LogProps} ->
+        {stop, Reason2, Props, LogProps} ->
             {_, CustomProps} = PropExtractFun(Props),
             egre_index:put(Props),
             log([{tag, LogTag},
@@ -188,7 +188,7 @@ handle_cast_({fail, Reason, Event, Context},
             egre_index:put(Props),
             % FIXME I think this will just cause the supervisor to restart it
             % Probably need to tell the supervisor to kill us
-            {stop, {shutdown, Reason}, State#state{props = Props}};
+            {stop, {shutdown, Reason2}, State#state{props = Props}};
         {Props, _Reason, _Event, _Context, LogProps} ->
             {_, CustomProps} = PropExtractFun(Props),
             log([{stage, fail},
@@ -460,6 +460,10 @@ populate_(Props, IdPids) ->
 
 set_pid(Prop = {id, _V}, {IdPids, Props}) ->
     {IdPids, [Prop | Props]};
+set_pid({K, {{pid, V1}, {pid, V2}}}, {IdPids, Props}) ->
+    MaybeProc1 = maybe_proc(V1, IdPids),
+    MaybeProc2 = maybe_proc(V2, IdPids),
+    {IdPids, [{K, {MaybeProc1, MaybeProc2}} | Props]};
 set_pid({K, {{pid, V1}, V2}}, {IdPids, Props}) ->
     {IdPids, [{K, {maybe_proc(V1, IdPids), V2}} | Props]};
 set_pid({K, Map = #{}}, {IdPids, Props}) ->
@@ -569,16 +573,19 @@ fail(Reason, Event, Context, #state{props = Props}) ->
     Acc = {Props, Reason, Event, Context, _LogProps = []},
     lists:foldl(fun handle_fail/2, Acc, Rules).
 
-handle_fail(_, Response = {stop, _Event, _Context, _Props, _LogProps}) ->
+handle_fail(_, Response = {stop, _Reason, _Props, _LogProps}) ->
     Response;
 handle_fail(MapOrMod, {Props, Reason, Event, Context, LogProps}) ->
     FailFun = fail_function(MapOrMod),
     case FailFun({Props, Reason, Event, Context}) of
         undefined ->
             {Props, Reason, Event, Context, LogProps};
+        {stop, Reason2, Props2, LogProps2} ->
+            MergedLogProps = merge_log_props(LogProps, LogProps2),
+            {stop, Reason2, Props2, MergedLogProps};
         {Props2, LogProps2} ->
             {Props2, Reason, Event, Context, LogProps ++ LogProps2};
-        Props2 ->
+        Props2 when is_list(Props2) ->
             {Props2, Reason, Event, Context, LogProps}
     end.
 
