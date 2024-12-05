@@ -65,7 +65,9 @@ wait_db_ready() ->
     io:format(user, "Caller ~p: DB ready~n", [self()]).
 
 wait_db_done(Millis) ->
-    io:format(user, "Caller ~p waiting for DB to be finished~n", [self()]),
+    Time1 = erlang:localtime(),
+    io:format(user, "~p Caller ~p waiting for DB to be finished~n", [Time1, self()]),
     Result = egre_postgres:wait_done(Millis),
-    io:format(user, "Caller ~p: DB finished~n", [self()]),
+    Time2 = erlang:localtime(),
+    io:format(user, "~p Caller ~p: DB finished~n", [Time2, self()]),
     Result.
