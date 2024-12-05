@@ -58,6 +58,7 @@ start_link(MaybeId, OriginalProps) ->
                 StoredProps
         end,
 
+    %% TODO change registered name of process to ID
     {ok, Pid} = gen_server:start_link(?MODULE, Props, []),
 
     case proplists:get_value(pid, Props) of
@@ -136,7 +137,8 @@ init(Props) ->
     spawn_link(Fun),
     process_flag(trap_exit, true),
     attempt(self(), {self(), init}),
-    {ok, #state{props = [{pid, self()} | Props],
+    Props2 = lists:keydelete(pid, 1, Props),
+    {ok, #state{props = [{pid, self()} | Props2],
                 prop_extract_fun = fun M:F/A,
                 log_tag = LogTag}}.
 
