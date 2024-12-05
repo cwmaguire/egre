@@ -46,11 +46,11 @@ ref2b(Ref) when is_reference(Ref) ->
 p2b(Pid) when is_pid(Pid) ->
     case list_to_binary(pid_to_list(Pid)) of
         <<"<0.", Middle:3/binary, ".0>">> ->
-            Middle;
+            <<"|", Middle/binary, "|">>;
         <<"<0.", Middle:2/binary, ".0>">> ->
-            Middle;
+            <<"|", Middle/binary, "|">>;
         <<"<0.", Middle:1/binary, ".0>">> ->
-            Middle;
+            <<"|", Middle/binary, "|">>;
         Other ->
             Other
     end.

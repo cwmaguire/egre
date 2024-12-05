@@ -61,15 +61,16 @@ handle_cast({log, Pid, Level, Props},
             State = #state{serialize_fun = CustomSerializeFun})
   when is_list(Props) ->
     Props2 = [{process, Pid}, {level, Level} | Props],
-    NamedProps = add_index_details(Props2),
+    %NamedProps = add_index_details(Props2),
+    Props3 = flatten_non_scalar_keys(Props2),
     S = fun(Val, Fun) ->
                 egre_serialize:serialize(Val, Fun)
         end,
     BinProps = [{S(K, CustomSerializeFun), S(V, CustomSerializeFun)}
-                || {K, V} <- NamedProps],
+                || {K, V} <- Props3],
 
-    egre_event_log_json:log(NamedProps, BinProps),
-    egre_event_log_postgres:log(NamedProps, BinProps),
+    egre_event_log_json:log(Props3, BinProps),
+    egre_event_log_postgres:log(Props3, BinProps),
     {noreply, State};
 
 handle_cast(Msg, State) ->
@@ -86,33 +87,15 @@ terminate(Reason, State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-add_index_details(Props) ->
-    lists:foldl(fun add_index_details/2, [], Props).
+flatten_non_scalar_keys(Props) ->
+    lists:map(fun flatten_non_scalar_key/1, Props).
 
-%% TODO Rethink this: for every object I log, I'm calling index:get(Pid)
-%% for every property that is a pid. I think I end up building a table of
-%% all the PID IDs anyway, so I don't think I need this. That is, the web
-%% page or the database will have a record of the ID for every pid. Any
-%% top level PID that gets logged stores the ID of that PID for every other
-%% log message.
-add_index_details({_Key = {Atom1, Atom2}, Pid}, NamedProps)
-  when is_pid(Pid),
-       is_atom(Atom1),
-       is_atom(Atom2) ->
+flatten_non_scalar_key({_Key = {Atom1, Atom2}, Value})
+  when is_atom(Atom1), is_atom(Atom2) ->
     Str1 = atom_to_list(Atom1),
     Str2 = atom_to_list(Atom2),
     Key = list_to_atom(Str1 ++ "_" ++ Str2),
-    add_index_details({Key, Pid}, NamedProps);
-add_index_details({Key, Pid}, NamedProps) when is_pid(Pid) ->
-    case egre_index:get(Pid) of
-        undefined ->
-            NamedProps;
-        #object{id = Id, icon = Icon} ->
-            IdKey = list_to_atom(atom_to_list(Key) ++ "_id"),
-            IconKey = list_to_atom(atom_to_list(Key) ++ "_icon"),
-            Props = [P || P = {_, V} <- [{IdKey, Id}, {IconKey, Icon}], V /= undefined],
-            [{Key, Pid} | Props] ++ NamedProps
-    end;
-add_index_details(Prop, NamedProps) ->
-    [Prop | NamedProps].
+    {Key, Value};
+flatten_non_scalar_key(Prop) ->
+    Prop.
 
