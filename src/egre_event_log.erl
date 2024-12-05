@@ -89,6 +89,12 @@ code_change(_OldVsn, State, _Extra) ->
 add_index_details(Props) ->
     lists:foldl(fun add_index_details/2, [], Props).
 
+%% TODO Rethink this: for every object I log, I'm calling index:get(Pid)
+%% for every property that is a pid. I think I end up building a table of
+%% all the PID IDs anyway, so I don't think I need this. That is, the web
+%% page or the database will have a record of the ID for every pid. Any
+%% top level PID that gets logged stores the ID of that PID for every other
+%% log message.
 add_index_details({_Key = {Atom1, Atom2}, Pid}, NamedProps)
   when is_pid(Pid),
        is_atom(Atom1),
