@@ -216,7 +216,7 @@ create_log_table(Conn, Columns) ->
 
     epgsqla:squery(Conn,
                    ["create table if not exists log ("
-                    "id serial primary key, "
+                    "pk serial primary key, "
                     "timestamp timestamp default current_timestamp ",
                     ColumnSpecs,
                     ");"]).
@@ -226,7 +226,7 @@ create_pid_id_table(Conn, Keys) ->
 
     epgsqla:squery(Conn,
                    ["create table if not exists pid_id ("
-                    "id serial primary key, "
+                    "pk serial primary key, "
                     "timestamp timestamp default current_timestamp ",
                     Columns,
                     ")"]).

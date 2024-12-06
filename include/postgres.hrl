@@ -14,4 +14,4 @@
 -define(PID_ID_COLUMNS,
         [tag,
          pid,
-         pid_id]).
+         id]).
