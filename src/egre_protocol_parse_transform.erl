@@ -107,8 +107,8 @@ attempt_clause({clause, _Line, Head, GuardGroups, Body}, State) ->
 
 attempt_head(CustomData, _Props, Event, Context, State) ->
     %{Parents, Props, Event}.
-    CustomDataBin = print(CustomData),
     {EventString, Matches} = event_tuple_string(Event),
+    CustomDataBin = map(CustomData, Matches),
     ContextBin = print(Context),
     State#{custom => CustomDataBin,
            event => EventString,
@@ -318,13 +318,89 @@ expr_field({record_field, _Lf, {atom, _La, _F}, Expr}, State) ->
 expr_field({record_field, _Lf, {var,_La,'_'}, Expr}, State) ->
     search(Expr, State).
 
-guard_groups(GuardGroups, State) ->
-    Exprs = lists:map(fun guard_group_conjunction/1, GuardGroups),
-    GuardGroupsBin = separate(<<"; ">>, Exprs),
-    State#{guard_groups => GuardGroupsBin}.
+guard_groups(GuardGroups, State = #{matches := Matches}) ->
+    io:format(user, "GuardGroups = ~p~n", [GuardGroups]),
+    GuardGroups2 = [guard_group_conjunction(GG, Matches) || GG <- GuardGroups],
+    State#{guard_groups => GuardGroups2}.
 
-guard_group_conjunction(GuardGroupConjunctionExpressions) ->
-    map_separate(<<", ">>, fun print/1, GuardGroupConjunctionExpressions).
+guard_group_conjunction(Guards, Matches) ->
+    [guard(Guard, Matches) || Guard <- Guards].
+
+guard({call, _L, {atom, _La, Fun}, [{var, _Lv, Var}]},
+      Matches) ->
+    FunBin = atom_to_binary(Fun),
+    VarBin = atom_to_binary(Var),
+    case maps:get(VarBin, Matches, undefined) of
+        undefined ->
+            <<FunBin/binary, "(", VarBin/binary, ")">>;
+        Index when is_integer(Index) ->
+            IndexBin = integer_to_binary(Index),
+            <<FunBin/binary, "(", IndexBin/binary, ")">>
+    end;
+
+% {op,{33,13}, '==', {var,{33,8},'Self'}, {call,{33,16},{atom,{33,16},self},[]}},
+guard({op, _L, Op, {var, _Lv, Var}, {call, _Lc, {atom, _La, Fun}, []}},
+      Matches) ->
+    OpBin = atom_to_binary(Op),
+    VarBin = atom_to_binary(Var),
+    FunBin = atom_to_binary(Fun),
+    case maps:get(VarBin, Matches, undefined) of
+        undefined ->
+            <<VarBin/binary, " ", OpBin/binary, " ", FunBin/binary, "()">>;
+        Index when is_integer(Index) ->
+            IndexBin = integer_to_binary(Index),
+            <<IndexBin/binary, " ", OpBin/binary, " ", FunBin/binary, "()">>
+    end;
+
+guard({op, _L, Op, {call, _Lc, {atom, _La, Fun}, []}, {var, _Lv, Var}},
+      Matches) ->
+    OpBin = atom_to_binary(Op),
+    VarBin = atom_to_binary(Var),
+    FunBin = atom_to_binary(Fun),
+    case maps:get(VarBin, Matches, undefined) of
+        undefined ->
+            <<VarBin/binary, " ", OpBin/binary, " ", FunBin/binary, "()">>;
+        Index when is_integer(Index) ->
+            IndexBin = integer_to_binary(Index),
+            <<IndexBin/binary, " ", OpBin/binary, " ", FunBin/binary, "()">>
+    end;
+
+% {op,{34,20}, '==', {var,{34,8},'HitOrEffect'}, {atom,{34,23},hit}},
+% {op,{34,40}, '==', {var,{34,28},'HitOrEffect'}, {atom,{34,43},effect}}
+guard({op, _L, Op, {var, _Lv, Var}, {atom, _La, Atom}},
+      Matches) ->
+    OpBin = atom_to_binary(Op),
+    VarBin = atom_to_binary(Var),
+    AtomBin = atom_to_binary(Atom),
+    case maps:get(VarBin, Matches, undefined) of
+        undefined ->
+            <<VarBin/binary, " ", OpBin/binary, " ", AtomBin/binary>>;
+        Index when is_integer(Index) ->
+            IndexBin = integer_to_binary(Index),
+            <<IndexBin/binary, " ", OpBin/binary, " ", AtomBin/binary>>
+    end;
+
+guard({op, _L, Op, {var, _Lv, Var}, {integer, _La, Int}},
+      Matches) ->
+    OpBin = atom_to_binary(Op),
+    VarBin = atom_to_binary(Var),
+    IntBin = integer_to_binary(Int),
+    case maps:get(VarBin, Matches, undefined) of
+        undefined ->
+            <<VarBin/binary, " ", OpBin/binary, " ", IntBin/binary>>;
+        Index when is_integer(Index) ->
+            IndexBin = integer_to_binary(Index),
+            <<IndexBin/binary, " ", OpBin/binary, " ", IntBin/binary>>
+    end;
+
+% {op,{34,27}, 'orelse',
+%      {op,{34,20},'==',{var,{34,8},'HitOrEffect'},{atom,{34,23},hit}},
+%      {op,{34,46},'==',{var,{34,34},'HitOrEffect'},{atom,{34,49},effect}}}
+guard({op, _L, Op, Op1, Op2}, Matches) ->
+    OpBin = atom_to_binary(Op),
+    Op1Bin = guard(Op1, Matches),
+    Op2Bin = guard(Op2, Matches),
+    <<Op1Bin/binary, " ", OpBin/binary, " ", Op2Bin/binary>>.
 
 %% This is a list of generators _or_ filters
 %% which are simply expressions
@@ -353,6 +429,21 @@ event_tuple_string([{atom, _, Atom} | Rest], Index, Strings, Matches) ->
 event_tuple_string([_ | Rest], Index, Strings, Matches) ->
     Strings2 = Strings ++ [integer_to_list(Index)],
     event_tuple_string(Rest, Index, Strings2, Matches).
+
+map({map, _Lm, MapFields}, Matches) ->
+    [map_field(MapField, Matches) || MapField <- MapFields].
+
+map_field({map_field_exact, _Lm, {atom, _La, Field}, {var, _Lv, Var}},
+          Matches) ->
+    FieldBin = atom_to_binary(Field),
+    VarBin = atom_to_binary(Var),
+    case maps:get(VarBin, Matches, undefined) of
+        undefined ->
+            <<FieldBin/binary, " == ", VarBin/binary>>;
+        Index when is_integer(Index) ->
+            IndexBin = integer_to_binary(Index),
+            <<IndexBin/binary, " == ", FieldBin/binary>>
+    end.
 
 print({var, _Line, VarName}) ->
     move_leading_underscore(a2b(VarName));
