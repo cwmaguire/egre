@@ -4,22 +4,27 @@
 -export([parse_transform/2]).
 
 parse_transform(Forms, _Options) ->
+    io:format(user, "Forms = ~p~n", [Forms]),
     io:format("~~", []),
 
-    CsvFilename = csv_filename("protocol"),
+    Module = module(Forms),
+    States = states(Forms, #{module => Module}),
 
-    Events = events(Forms, #{module => module(Forms)}),
+    StatesBin = lists:map(fun print_state/1, States),
 
-    {ok, CsvFile} = file:open(CsvFilename, [write, append]),
-    case file:write(CsvFile, [Events]) of
+    Filename = <<Module/binary, ".states">>,
+    {ok, File} = file:open(Filename, [write]),
+    case file:write(File, [StatesBin]) of
         ok ->
-            %io:format(user, "Write successful~n", []);
             ok;
         Error ->
-            io:format(user, "~p Write failed: ~p~n~p~n", [module(Forms), Error, Events])
+            io:format(user, "~p Write failed: ~p~n~p~n", [module(Forms), Error, States])
     end,
-    file:close(CsvFile),
+    file:close(File),
     Forms.
+
+print_state(State) ->
+    io_lib:format("~p~n", [State]).
 
 module([{attribute, _Line, module, Module} | _]) ->
     remove_prefix(<<"rules_">>, a2b(Module));
@@ -36,34 +41,18 @@ remove_prefix(Prefix, Bin) ->
             Bin
     end.
 
-csv_filename(Filename) ->
-    filename:rootname(Filename) ++ ".csv".
-
-events(Forms, State) when is_list(Forms) ->
-    lists:flatten([events(Form, State) || Form <- Forms]);
-events({function,_Line, Name,_Arity,Clauses}, State) when Name == 'attempt' ->
+states(Forms, State) when is_list(Forms) ->
+    %io:format(user, "Forms = ~p~n", [Forms]),
+    List = [states(Form, State) || Form <- Forms],
+    %io:format(user, "List = ~p~n", [List]),
+    lists:flatten(List);
+states({function,_Line, Name, _Arity, Clauses}, State) when Name == 'attempt' ->
     lists:map(fun(Clause) -> attempt_clause(Clause, State) end, Clauses);
-events({function,_Line, Name,_Arity,Clauses}, State) when Name == 'succeed' ->
+states({function,_Line, Name, _Arity, Clauses}, State) when Name == 'succeed' ->
     lists:map(fun(Clause) -> succeed_clause(Clause, State) end, Clauses);
-events(_Form, _State) ->
+states(_Form, _State) ->
     [].
 
-
-catch_clause({clause, _Line0, Exception, GuardGroups, Body}, State) ->
-    [{tuple, _Line1, [Class, ExceptionPattern, _Wild]}] = Exception,
-    {Exp1, State1} = search(Class, State),
-    {Exp2, State2} = search(ExceptionPattern, State1),
-    {Exp3, State3} = guard_groups(GuardGroups, State2),
-    {Exps, State4} = loop_with_state(Body, fun search/2, State3),
-    {[Exp1, Exp2, Exp3 | Exps], State4}.
-
-clause({clause, _Line, Head, GuardGroups, Body}, State) ->
-    clause('', {clause, _Line, Head, GuardGroups, Body}, State).
-
-clause(_Name, {clause, _Line, _Head, _GuardGroups, Body}, State) ->
-    % Don't look at function arguments and guards that aren't attempt or succeed
-    % but do look for any calls to egre_object:attempt/2 calls
-   loop_with_state(Body, fun search/2, State).
 
 %% We don't need to see catch-all clauses in the protocol
 %% attempt(_) -> ...
@@ -112,70 +101,27 @@ attempt_clause({clause,
 attempt_clause({clause, _Line, Head, GuardGroups, Body}, State) ->
     [{tuple, _Line2, [CustomData, Props, Event, Context]}] = Head,
 
-    {AttemptHeadExprs, State1} = attempt_head(CustomData, Props, Event, Context, State),
-    {GuardGroupExprs, State2} =  guard_groups(GuardGroups, State1),
-    {BodyExprs, State3} = loop_with_state(Body, fun search/2, State2),
+    State1 = attempt_head(CustomData, Props, Event, Context, State),
+    State2 = guard_groups(GuardGroups, State1),
+    _State3 = lists:foldl(fun search/2, State2, Body).
 
-    Module = maps:get(module, State3),
-    MaybeResentMessage = maps:get(resent_message, State3, undefined),
-    MaybeBroadcastMessage = maps:get(broadcast_message, State3, undefined),
-
-    ResentMessage =
-        case MaybeResentMessage of
-            undefined ->
-                <<>>;
-            Other ->
-                [<<"resend = ">>, Other]
-        end,
-    BroadcastMessage =
-        case MaybeBroadcastMessage of
-            undefined ->
-                <<>>;
-            Other_ ->
-                [<<"broadcast = ">>, Other_]
-        end,
-
-    Attempt = [Module, <<"|">>,
-               <<"attempt|">>,
-               AttemptHeadExprs, <<"|">>,
-               GuardGroupExprs, <<"|">>,
-               ResentMessage,
-               BroadcastMessage,
-               <<"\n">>],
-
-    AttemptEvent = hd(lists:reverse(AttemptHeadExprs)),
-
-    MaybeResentOrBroadcastEvent =
-        case {MaybeResentMessage, MaybeBroadcastMessage} of
-            {undefined, undefined} ->
-                <<>>;
-            {_, undefined} ->
-                %% Module, Type, Parents, Props, Event, Guards, resend | broadcast | attempt message
-                [Module, <<"|resend|||">>, MaybeResentMessage, <<"||attempt = ">>, AttemptEvent, <<"\n">>];
-            {undefined, _} ->
-                %% Module, Type, Parents, Props, Event, Guards, resend | broadcast | attempt message
-                [Module, <<"|broadcast|||">>, MaybeBroadcastMessage, <<"||attempt = ">>, AttemptEvent, <<"\n">>]
-        end,
-
-    % I'm not sure anything can be in BodyExprs because anything that doesn't come from a attempt
-    % or succeed clause is stored in the state.
-    [Attempt,  BodyExprs, MaybeResentOrBroadcastEvent].
-
-attempt_head(CustomData, Props, Event, Context, State) ->
+attempt_head(CustomData, _Props, Event, Context, State) ->
     %{Parents, Props, Event}.
     CustomDataBin = print(CustomData),
-    PropsBin = print(Props),
-    EventBin = print(Event),
+    {EventString, Matches} = event_tuple_string(Event),
     ContextBin = print(Context),
-    Output = separate(<<"|">>, [CustomDataBin, PropsBin, EventBin, ContextBin]),
-    {Output, State#{event => EventBin}}.
+    State#{custom => CustomDataBin,
+           event => EventString,
+           context => ContextBin,
+           matches => Matches,
+           stage => attempt}.
 
 %% I don't think you can get a function clause without a name
 %succeed_clause({clause, _Line, Head, GuardGroups, Body}) ->
     %succeed_clause('', {clause, _Line, Head, GuardGroups, Body}).
 
 succeed_clause({clause, _Line1, [{var, _Line2, '_'}], _, _}, _State) ->
-    [];
+    undefined;
 
 %% We don't need to see catch-all clauses in the protocol
 %% succeed({AnyVAr, _}) -> ...
@@ -183,151 +129,111 @@ succeed_clause({clause, _Line1, [{tuple, _Line2, [_Props, {var, _Line3, Ignored}
   when Ignored == '_';
        Ignored == '_Msg';
        Ignored == '_Other' ->
-    [];
+    undefined;
 
 succeed_clause({clause, _Line1,
-                [{tuple, _Line2, [Props, {match, _Line3, {var, _Line4, 'Msg'}, Event}, Context]}],
+                [{tuple, _Line2, [Props, {match, _Line3, {var, _Line4, _}, Event}, Context]}],
                 GuardGroups, Body}, State) ->
     succeed_clause({clause, 0, [{tuple, 0, [Props, Event, Context]}], GuardGroups, Body}, State);
 
 succeed_clause({clause, _Line0, Head, GuardGroups, Body}, State) ->
     [{tuple, _Line1, [Props, Event, Context]}] = Head,
 
-    {SucceedHeadExprs, State1} = succeed_head(Props, Event, Context, State),
-    {GuardGroupsExprs, State2} = guard_groups(GuardGroups, State1),
+    State1 = succeed_head(Props, Event, Context, State),
+    State2 = guard_groups(GuardGroups, State1),
+    _State3 = lists:foldl(fun search/2, State2, Body).
 
-    Succeed = [maps:get(module, State2),
-               <<"|">>,
-               <<"succeed|">>,
-               _NoParents = <<"|">>,
-               SucceedHeadExprs,
-               <<"|">>,
-               GuardGroupsExprs,
-               <<"\n">>],
-
-    {BodyExprs, _State} = loop_with_state(Body, fun search/2, State2),
-    [Succeed | BodyExprs].
-
-succeed_head(Props, Event, Context, State) ->
-    PropBin = print(Props),
-    EventBin = print(Event),
+succeed_head(_Props, Event, Context, State) ->
+    {EventString, Matches} = event_tuple_string(Event),
     ContextBin = print(Context),
-
-    CSVOutput = separate(<<"|">>, [PropBin, EventBin, ContextBin]),
-    {CSVOutput, State}.
-
-case_clause({clause, _Line, [Head], _GuardGroups, Body}, State) ->
-     {HeadExprs, State1} = search(Head, State),
-
-     % I don't think we can call egre_object:attempt/2 in a guard clause
-     % and the only reason to descend below function heads is to look for calls
-     % to egre_object:attempt/2.
-     %case GuardGroups of
-     %    [] ->
-     %        [];
-     %    _ ->
-     %        guard_groups(GuardGroups)
-     %end ++
-
-    {BodyExprs, State2} = loop_with_state(Body, fun search/2, State1),
-
-    {[HeadExprs | BodyExprs], State2}.
+    State#{event => EventString,
+           matches => Matches,
+           context => ContextBin,
+           stage => succeed}.
 
 search({lc,_Line,Result,Quals}, State) ->
-    {Events1, State1} = search(Result, State),
-    {Events2, State2} = loop_with_state(Quals, fun lc_bc_qual/2, State1),
-    {[Events1 | Events2], State2};
+    State1 = search(Result, State),
+    _State2 = lists:foldl(fun lc_bc_qual/2, State1, Quals);
 search({bc,Line,E0,Quals}, State) ->
     search({lc, Line, E0, Quals}, State); %% other than 'bc', this is the same as the clause above
 search({block,_Line,Expressions}, State) ->
-    loop_with_state(Expressions, fun search/2, State);
+    lists:foldl(fun search/2, State, Expressions);
 search({'if',_Line,Clauses}, State) ->
-    loop_with_state(Clauses, fun clause/2, State);
+    lists:foldl(fun clause/2, State, Clauses);
 search({'case',_Line,Expression,Clauses}, State) ->
-
-    {Events1, State1} = search(Expression, State),
-    {Events2, State2} = loop_with_state(Clauses, fun case_clause/2, State1),
-    {[Events1 | Events2], State2};
+    State1 = search(Expression, State),
+    _State2 = lists:foldl(fun case_clause/2, State1, Clauses);
 search({'receive',_Line,Clauses}, State) ->
-    loop_with_state(Clauses, fun clause/2, State);
+    lists:foldl(fun clause/2, State, Clauses);
 search({'receive',_Line,Clauses,AfterWait,AfterExpressions}, State) ->
-    {Events1, State1} = loop_with_state(Clauses, fun clause/2, State),
-    {Events2, State2} = search(AfterWait, State1),
-    {Events3, State3} = loop_with_state(AfterExpressions, fun search/2, State2),
-    {[Events1 | [Events2 | Events3]], State3};
+    State1 = lists:foldl(fun clause/2, State, Clauses),
+    State2 = search(AfterWait, State1),
+    _State3 = lists:foldl(fun search/2, State2, AfterExpressions);
 search({'try',_Line,Expressions,_WhatIsThis,CatchClauses,AfterExpressions}, State) ->
-    {Events1, State1} = loop_with_state(Expressions, fun search/2, State),
-    {Events2, State2} = loop_with_state(CatchClauses, fun catch_clause/2, State1),
-    {Events3, State3} = loop_with_state(AfterExpressions, fun search/2, State2),
-    {[Events1 | [Events2 | Events3]], State3};
+    State1 = lists:foldl(fun search/2, State, Expressions),
+    State2 = lists:foldl(fun catch_clause/2, State1, CatchClauses),
+    _State3 = lists:foldl(fun search/2, State2, AfterExpressions);
 
 search({'fun',_Line,Body}, State) ->
     case Body of
         {clauses,Clauses} ->
             Fun = fun(Clause, State_) -> clause('', Clause, State_) end,
-            loop_with_state(Clauses, Fun, State);
+            lists:foldl(Fun, State, Clauses);
         _ ->
-            {[], State}
+            State
     end;
-%search({call,_Line,Fun,Args}) ->
 search({call, _Line,
       {remote, _RemLine,
        {atom, _AtomLine, egre_object},
        {atom, _FunAtomLine, attempt}},
-      [Arg1, Arg2]},
+      [_Target, NewEvent]},
      State) ->
-    %NoParents = <<"|">>,
-    NoProps = <<"|">>,
-    Arg1Bin = print(Arg1),
-    Arg2Bin = print(Arg2),
-    {[maps:get(module, State), <<"|new|">>, Arg1Bin, NoProps, <<"|">>, Arg2Bin, <<"\n">>], State};
+    State#{new_event_arg => NewEvent};
 
 search({call, _Line,
       {remote, _RemLine,
        {atom, _AtomLine, egre_object},
        {atom, _FunAtomLine, attempt_after}},
-      [_, Arg2, Arg3]}, State) ->
-    NoProps = <<"|">>,
-    Arg2Bin = print(Arg2),
-    Arg3Bin = print(Arg3),
-    {[maps:get(module, State), <<"|new|">>, Arg2Bin, NoProps, <<"|">>, Arg3Bin, <<"\n">>], State};
+      [_, _, Arg3]}, State) ->
+    State#{new_event => Arg3};
 
 search({call,_Line,__Fun, _Args}, State) ->
     % Don't care about non-event calls
-    {[], State};
+    State;
 search({'catch',_Line,Expression}, State) ->
     %% No new variables added.
     search(Expression, State);
 
-search({match, _Line, {var, _Line1, 'NewMessage'}, NewMessage}, State) ->
-    % we can ignore the var, since we know we won't need it in the CSV
-    NewMessageBin = print(NewMessage),
-    {[], State#{new_message => NewMessageBin}};
+search({match, _Line, {var, _Line1, Var}, NewEvent}, State) 
+  when Var == 'Event';
+       Var == 'NewEvent' ->
+    {EventString, Matches} = event_tuple_string(NewEvent),
+    State#{new_event_tuple => EventString,
+           matches => Matches};
 
 search({match,_Line,Expr1,Expr2}, State) ->
-    {Expr1Expr, State1} = search(Expr1, State),
-    {Expr2Expr, State2} = search(Expr2, State1),
-    {[Expr1Expr | [Expr2Expr]], State2};
+    State1 = search(Expr1, State),
+    search(Expr2, State1);
 
 search({op,_Line,'==',L,R}, State) ->
-    {LExpr, State1} = search(L, State),
-    {RExpr, State2} = search(R, State1),
-    {[LExpr | [RExpr]], State2};
+    State1 = search(L, State),
+    search(R, State1);
 
 search({op, _Line, _Op, L, R}, State) ->
-    {LExpr, State1} = search(L, State),
-    {RExpr, State2} = search(R, State1),
-    {[LExpr | [RExpr]], State2};
+    State1 = search(L, State),
+    _State2 = search(R, State1);
 
+%% TODO this is now handled in a #result{} record
 search({tuple, _Line0, [{atom, _Line1, resend}, Source, {var, _Line2, 'NewMessage'}]}, State = #{new_message := NewMessage}) ->
-    {SourceExpr, State1} = search(Source, State),
-    {SourceExpr, State1#{resent_message => NewMessage}};
+    State1 = search(Source, State),
+    State1#{resent_message => NewMessage};
 
+%% TODO this is now handled in a #result{} record
 search({tuple, _Line0, [{atom, _Line1, broadcast}, {var, _Line2, 'NewMessage'}]}, State = #{new_message := NewMessage}) ->
     {[], State#{broadcast_message => NewMessage}};
 
 search({tuple,_Line, TupleExpressions}, State) ->
-    loop_with_state(TupleExpressions, fun search/2, State);
+    lists:foldl(fun search/2, State, TupleExpressions);
 %% There's a special case for all cons's after the first: {tail, _}
 %% so this is a list of one item.
 search({cons,_Line,Head,{nil, _}}, State) ->
@@ -335,35 +241,77 @@ search({cons,_Line,Head,{nil, _}}, State) ->
 search({cons,_Line,Head,{var, _Line2, '_'}}, State) ->
     search(Head, State);
 search(_Cons = {cons,_Line,Head,Tail}, State) ->
-    {HeadExpr, State1} = search(Head, State),
-    {TailExpr, State2} = search(Tail, State1),
-    {[HeadExpr | [TailExpr]], State2};
+    State1 = search(Head, State),
+    _State2 = search(Tail, State1);
 search(_Tail = {tail, {cons, _Line, Head, {nil, _}}}, State) ->
     search(Head, State);
 search(_Tail_ = {tail, {cons, _Line, Head, Tail}}, State) ->
-    {HeadExpr, State1} = search(Head, State),
-    {TailExpr, State2} = search(Tail, State1),
-    {[HeadExpr | [TailExpr]], State2};
+    State1 = search(Head, State),
+    _State2 = search(Tail, State1);
 search({tail, Call = {call, _Line, _Fun, _Args}}, State) ->
      search(Call, State);
 search({tail, Tail}, State) ->
     search(Tail, State);
+search({record, _Line, result, ExprFields}, State) ->
+    lists:foldl(fun result_field/2, State, ExprFields);
 search({record, _Line, _Name, ExprFields}, State) ->
-    loop_with_state(ExprFields, fun expr_field/2, State);
+    lists:foldl(fun expr_field/2, State, ExprFields);
 
 search({record_index,_Line, _Name, Field}, State) ->
      search(Field, State);
 search({record_field,_Line,Expression, _RecName, Field}, State) ->
-    {ExprExpr, State1} = search(Expression, State),
-    {FieldExpr, State2} = search(Field, State1),
-    {[ExprExpr | [FieldExpr]], State2};
+    State1 = search(Expression, State),
+    _State2 = search(Field, State1);
 
 % How does this happen? (Foo).bar ?
 %search({record_field,Line,Rec0,Field0}) ->
     %Rec1 = search(Rec0),
     %Field1 = search(Field0);
 search(_IgnoredExpr, State) ->
-    {[], State}.
+    State.
+
+catch_clause({clause, _Line0, Exception, GuardGroups, Body}, State) ->
+    [{tuple, _Line1, [Class, ExceptionPattern, _Wild]}] = Exception,
+    State1 = search(Class, State),
+    State2 = search(ExceptionPattern, State1),
+    State3 = guard_groups(GuardGroups, State2),
+    _State4 = lists:foldl(fun search/2, State3, Body).
+
+clause({clause, _Line, Head, GuardGroups, Body}, State) ->
+    clause(ignored, {clause, _Line, Head, GuardGroups, Body}, State).
+
+clause(_Name, {clause, _Line, _Head, _GuardGroups, Body}, State) ->
+    % Don't look at function arguments and guards that aren't attempt or succeed
+    % but do look for any calls to egre_object:attempt/2 calls
+   lists:foldl(fun search/2, State, Body).
+
+case_clause({clause, _Line, [Head], _GuardGroups, Body}, State) ->
+    State1 = search(Head, State),
+    _State2 = lists:foldl(fun search/2, State1, Body).
+
+
+result_field({record_field, _Lf, {atom, _La, result}, ResultValue}, State) ->
+    result(ResultValue, State);
+result_field({record_field, _Lf, {atom, _La, subscribe}, {atom, _La2, Bool}}, State) when is_boolean(Bool) ->
+    State#{sub => Bool};
+result_field({record_field, _Lf, {atom, _La, event}, NewEvent}, State) ->
+    State#{new_event_type => modify,
+           new_event_var => NewEvent};
+result_field({record_field, _Lf, {atom, _La, context}, Context}, State) ->
+    State#{context => Context};
+result_field({record_field, _Lf, _, _}, State) ->
+    State.
+
+result({atom, _La, succeed}, State) ->
+    State#{result => succeed};
+result({tuple, _L, [{atom, _La, fail}, _Reason]}, State) ->
+    State#{result => fail};
+result({tuple, _L, [{atom, _La, resend}, _, {var, _Lv, 'NewEvent'}]}, State) ->
+    State#{result => resend,
+           new_event_type => resend};
+result({tuple, _L, [{atom, _La, broadcast}, {var, _Lv, 'NewEvent'}]}, State) ->
+    State#{result => broadcast,
+           new_event_type => broadcast}.
 
 expr_field({record_field, _Lf, {atom, _La, _F}, Expr}, State) ->
     search(Expr, State);
@@ -371,33 +319,40 @@ expr_field({record_field, _Lf, {var,_La,'_'}, Expr}, State) ->
     search(Expr, State).
 
 guard_groups(GuardGroups, State) ->
-    %map_separate(<<"; ">>, fun guard_group_conjunction/1, GuardGroups).
-    {Exprs, State1} = loop_with_state(GuardGroups, fun guard_group_conjunction/2, State),
-    {separate(<<"; ">>, Exprs), State1}.
+    Exprs = lists:map(fun guard_group_conjunction/1, GuardGroups),
+    GuardGroupsBin = separate(<<"; ">>, Exprs),
+    State#{guard_groups => GuardGroupsBin}.
 
-guard_group_conjunction(GuardGroupConjunctionExpressions, State) ->
-    Output = map_separate(<<", ">>, fun print/1, GuardGroupConjunctionExpressions),
-    {Output, State}.
+guard_group_conjunction(GuardGroupConjunctionExpressions) ->
+    map_separate(<<", ">>, fun print/1, GuardGroupConjunctionExpressions).
 
 %% This is a list of generators _or_ filters
 %% which are simply expressions
 %% A generator is a target and a source
 lc_bc_qual({generate,_Line,Target,Source}, State) ->
-    %search(Target) ++ search(Source);
-
-    %{TargetExpr, State1} = search(Target, State),
-    %{SourceExpr, State2} = search(Source, State1),
-    %{[TargetExpr | [SourceExpr]], State2};
-
-    loop_with_state([Target, Source], fun search/2, State);
-
+    lists:foldl(fun search/2, State, [Target, Source]);
 lc_bc_qual({b_generate,_Line,Target,Source}, State) ->
-    %search(Target) ++ search(Source);
-    loop_with_state([Target, Source], fun search/2, State);
+    lists:foldl(fun search/2, State, [Target, Source]);
 lc_bc_qual(FilterExpression, State) ->
     search(FilterExpression, State).
 
-%% Once we've found AST elements that we want in the CSV we need to convert them to text
+event_tuple_string({tuple, _L, Elements}) ->
+    {Strings, Matches} = event_tuple_string(Elements, 1, [], #{}),
+    Strings2 = lists:flatten(lists:join(",", Strings)),
+    {Strings2, Matches}.
+
+event_tuple_string([], _Index, Strings, Matches) ->
+    {Strings, Matches};
+event_tuple_string([{var, _, Var} | Rest], Index, Strings, Matches) ->
+    Strings2 = Strings ++ [integer_to_list(Index)],
+    Matches2 = Matches#{atom_to_binary(Var) => Index},
+    event_tuple_string(Rest, Index + 1, Strings2, Matches2);
+event_tuple_string([{atom, _, Atom} | Rest], Index, Strings, Matches) ->
+    Strings2 = Strings ++ [atom_to_list(Atom)],
+    event_tuple_string(Rest, Index, Strings2, Matches);
+event_tuple_string([_ | Rest], Index, Strings, Matches) ->
+    Strings2 = Strings ++ [integer_to_list(Index)],
+    event_tuple_string(Rest, Index, Strings2, Matches).
 
 print({var, _Line, VarName}) ->
     move_leading_underscore(a2b(VarName));
@@ -477,13 +432,3 @@ move_leading_underscore(<<$_, Rest/binary>>) ->
     <<Rest/binary, "_">>;
 move_leading_underscore(Bin) ->
     Bin.
-
-loop_with_state(Forms, Fun, State) ->
-    %io:format(user, "Forms = ~p~n", [Forms]),
-    lists:foldl(fun(Form, {Exps, StateInner}) ->
-                    %io:format(user, "Form = ~p~n", [Form]),
-                    {Exp, StateAcc} = Fun(Form, StateInner),
-                    {Exps ++ [Exp], StateAcc}
-                end,
-                _Acc = {[], State},
-                Forms).
