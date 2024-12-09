@@ -4,27 +4,70 @@
 -export([parse_transform/2]).
 
 parse_transform(Forms, _Options) ->
-    io:format(user, "Forms = ~p~n", [Forms]),
+    %io:format(user, "Forms = ~p~n", [Forms]),
     io:format("~~", []),
 
     Module = module(Forms),
-    States = states(Forms, #{module => Module}),
+    Events = events(Forms, #{module => Module,
+                             sub => <<"false">>,
+                             custom => <<>>}),
 
-    StatesBin = lists:map(fun print_state/1, States),
+    SerializedEvents = lists:map(fun serialize/1, Events),
+    %io:format("~p", [StateCharlists]),
 
-    Filename = <<Module/binary, ".states">>,
-    {ok, File} = file:open(Filename, [write]),
-    case file:write(File, [StatesBin]) of
-        ok ->
-            ok;
-        Error ->
-            io:format(user, "~p Write failed: ~p~n~p~n", [module(Forms), Error, States])
-    end,
+    Filename = <<"protocol">>,
+    {ok, File} = file:open(Filename, [write, append]),
+    [write_state(File, Event) || Event <- SerializedEvents],
     file:close(File),
     Forms.
 
-print_state(State) ->
-    io_lib:format("~p~n", [State]).
+write_state(File, StateCharlist) ->
+    case file:write(File, StateCharlist) of
+        ok ->
+            ok;
+        Error ->
+            io:format(user, "Write failed: ~p~n~p~n", [Error, StateCharlist])
+    end.
+
+serialize(#{module := Module,
+              context := Context,
+              matches := Matches,
+              guard_groups := GuardGroups,
+              stage := Stage,
+              sub := Sub,
+              event := Event,
+              custom := Custom}) ->
+    ContextBin = string:pad(io_lib:format("~p", [Context]), 16),
+    MatchesIolist = serialize_matches(Matches),
+    EventField =
+        case {GuardGroups, Custom} of
+            {<<>>, <<>>} ->
+                Event;
+            _ ->
+                [Event, <<" when ">>,
+                 GuardGroups, <<" ">>,
+                 Custom]
+        end,
+
+    EventCharlist = string:pad(EventField, 110, trailing),
+    ModuleCharlist = string:pad(Module, 25),
+    StageCharlist = string:pad(Stage, 9),
+    SubCharlist = string:pad(Sub, 7),
+    [EventCharlist,
+     ModuleCharlist,
+     StageCharlist,
+     SubCharlist,
+     ContextBin,
+     <<" ">>,
+     MatchesIolist,
+     <<"\n">>];
+serialize(Other) ->
+    io:format("Couldn't serialize state:~n~p~n", [Other]),
+    <<>>.
+
+serialize_matches(Map) ->
+    SortedByIndex = lists:sort(fun({_, V1}, {_, V2}) -> V1 =< V2 end, maps:to_list(Map)),
+    [[integer_to_binary(V), <<": ">>, K, <<", ">>] || {K, V} <- SortedByIndex].
 
 module([{attribute, _Line, module, Module} | _]) ->
     remove_prefix(<<"rules_">>, a2b(Module));
@@ -41,16 +84,16 @@ remove_prefix(Prefix, Bin) ->
             Bin
     end.
 
-states(Forms, State) when is_list(Forms) ->
+events(Forms, State) when is_list(Forms) ->
     %io:format(user, "Forms = ~p~n", [Forms]),
-    List = [states(Form, State) || Form <- Forms],
+    List = [events(Form, State) || Form <- Forms],
     %io:format(user, "List = ~p~n", [List]),
     lists:flatten(List);
-states({function,_Line, Name, _Arity, Clauses}, State) when Name == 'attempt' ->
+events({function,_Line, Name, _Arity, Clauses}, State) when Name == 'attempt' ->
     lists:map(fun(Clause) -> attempt_clause(Clause, State) end, Clauses);
-states({function,_Line, Name, _Arity, Clauses}, State) when Name == 'succeed' ->
+events({function,_Line, Name, _Arity, Clauses}, State) when Name == 'succeed' ->
     lists:map(fun(Clause) -> succeed_clause(Clause, State) end, Clauses);
-states(_Form, _State) ->
+events(_Form, _State) ->
     [].
 
 
@@ -114,7 +157,7 @@ attempt_head(CustomData, _Props, Event, Context, State) ->
            event => EventString,
            context => ContextBin,
            matches => Matches,
-           stage => attempt}.
+           stage => <<"attempt">>}.
 
 %% I don't think you can get a function clause without a name
 %succeed_clause({clause, _Line, Head, GuardGroups, Body}) ->
@@ -149,7 +192,8 @@ succeed_head(_Props, Event, Context, State) ->
     State#{event => EventString,
            matches => Matches,
            context => ContextBin,
-           stage => succeed}.
+           sub => <<"">>,
+           stage => <<"succeed">>}.
 
 search({lc,_Line,Result,Quals}, State) ->
     State1 = search(Result, State),
@@ -210,6 +254,8 @@ search({match, _Line, {var, _Line1, Var}, NewEvent}, State)
     {EventString, Matches} = event_tuple_string(NewEvent),
     State#{new_event_tuple => EventString,
            matches => Matches};
+search({match, _Line, {var, _Line1, 'Result'}, Result}, State) ->
+    State#{result => Result};
 
 search({match,_Line,Expr1,Expr2}, State) ->
     State1 = search(Expr1, State),
@@ -293,7 +339,7 @@ case_clause({clause, _Line, [Head], _GuardGroups, Body}, State) ->
 result_field({record_field, _Lf, {atom, _La, result}, ResultValue}, State) ->
     result(ResultValue, State);
 result_field({record_field, _Lf, {atom, _La, subscribe}, {atom, _La2, Bool}}, State) when is_boolean(Bool) ->
-    State#{sub => Bool};
+    State#{sub => atom_to_binary(Bool)};
 result_field({record_field, _Lf, {atom, _La, event}, NewEvent}, State) ->
     State#{new_event_type => modify,
            new_event_var => NewEvent};
@@ -306,9 +352,16 @@ result({atom, _La, succeed}, State) ->
     State#{result => succeed};
 result({tuple, _L, [{atom, _La, fail}, _Reason]}, State) ->
     State#{result => fail};
+result({var, _Lv, 'Result'}, State = #{result := Result}) ->
+    result(Result, State);
 result({tuple, _L, [{atom, _La, resend}, _, {var, _Lv, 'NewEvent'}]}, State) ->
     State#{result => resend,
            new_event_type => resend};
+result({tuple, _L, [{atom, _La, resend}, _, Tuple = {tuple, _Lt, _}]}, State) ->
+    {Strings, _} = event_tuple_string(Tuple),
+    State#{result => resend,
+           new_event_type => resend,
+           new_event => Strings};
 result({tuple, _L, [{atom, _La, broadcast}, {var, _Lv, 'NewEvent'}]}, State) ->
     State#{result => broadcast,
            new_event_type => broadcast}.
@@ -319,12 +372,12 @@ expr_field({record_field, _Lf, {var,_La,'_'}, Expr}, State) ->
     search(Expr, State).
 
 guard_groups(GuardGroups, State = #{matches := Matches}) ->
-    io:format(user, "GuardGroups = ~p~n", [GuardGroups]),
+    %io:format(user, "GuardGroups = ~p~n", [GuardGroups]),
     GuardGroups2 = [guard_group_conjunction(GG, Matches) || GG <- GuardGroups],
-    State#{guard_groups => GuardGroups2}.
+    State#{guard_groups => lists:join(<<", ">>, GuardGroups2)}.
 
 guard_group_conjunction(Guards, Matches) ->
-    [guard(Guard, Matches) || Guard <- Guards].
+    lists:join(<<", ">>, [guard(Guard, Matches) || Guard <- Guards]).
 
 guard({call, _L, {atom, _La, Fun}, [{var, _Lv, Var}]},
       Matches) ->
@@ -400,7 +453,7 @@ guard({op, _L, Op, Op1, Op2}, Matches) ->
     OpBin = atom_to_binary(Op),
     Op1Bin = guard(Op1, Matches),
     Op2Bin = guard(Op2, Matches),
-    <<Op1Bin/binary, " ", OpBin/binary, " ", Op2Bin/binary>>.
+    <<"(", Op1Bin/binary, " ", OpBin/binary, " ", Op2Bin/binary, ")">>.
 
 %% This is a list of generators _or_ filters
 %% which are simply expressions
@@ -434,6 +487,20 @@ map({map, _Lm, MapFields}, Matches) ->
     [map_field(MapField, Matches) || MapField <- MapFields].
 
 map_field({map_field_exact, _Lm, {atom, _La, Field}, {var, _Lv, Var}},
+          Matches) ->
+    FieldBin = atom_to_binary(Field),
+    VarBin = atom_to_binary(Var),
+    case maps:get(VarBin, Matches, undefined) of
+        undefined ->
+            <<FieldBin/binary, " == ", VarBin/binary>>;
+        Index when is_integer(Index) ->
+            IndexBin = integer_to_binary(Index),
+            <<IndexBin/binary, " == ", FieldBin/binary>>
+    end;
+map_field({map_field_exact, _Lm,
+           {atom, _La, Field},
+           {tuple, _Lt, [{var, _Lv1, Var},
+                         {var, _Lv2, '_'}]}},
           Matches) ->
     FieldBin = atom_to_binary(Field),
     VarBin = atom_to_binary(Var),
