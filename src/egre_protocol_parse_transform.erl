@@ -4,7 +4,7 @@
 -export([parse_transform/2]).
 
 parse_transform(Forms, _Options) ->
-    %io:format(user, "Forms = ~p~n", [Forms]),
+    io:format(user, "Forms = ~p~n", [Forms]),
     io:format("~~", []),
 
     Module = module(Forms),
@@ -61,6 +61,8 @@ serialize(#{module := Module,
      <<" ">>,
      MatchesIolist,
      <<"\n">>];
+serialize(<<>>) ->
+    <<>>;
 serialize(Other) ->
     io:format("Couldn't serialize state:~n~p~n", [Other]),
     <<>>.
@@ -94,28 +96,34 @@ events({function,_Line, Name, _Arity, Clauses}, State) when Name == 'attempt' ->
 events({function,_Line, Name, _Arity, Clauses}, State) when Name == 'succeed' ->
     lists:map(fun(Clause) -> succeed_clause(Clause, State) end, Clauses);
 events(_Form, _State) ->
-    [].
+    <<>>.
 
 
 %% We don't need to see catch-all clauses in the protocol
 %% attempt(_) -> ...
 attempt_clause({clause, _Line1, [{var, _Line2, '_'}], _, _}, _State) ->
-    [];
+    <<>>;
 
 %% We don't need to see catch-all clauses in the protocol.
 %% Sometimes we'll catch anything that falls through in order to output
 %% missed events. We can ignore these.
 attempt_clause({clause, _Line1, [{var, _Line2, _Var}], _, _}, _State) ->
-    [];
+    <<>>;
 
 %% We don't need to see catch-all clauses in the protocol
 %% attempt({_, _, _Msg, _}) -> ...
 attempt_clause({clause,
                 _Line1,
-                [{tuple, _Line2, [{var, _Line3, '_'}, {var, _Line4, '_'}, {var, _Line5, '_Msg'}, {var, _Line6, '_'}]}],
+                [{tuple, _Lt,
+                  [_IgnoreCustom,
+                   {var, _Lv2, '_'},
+                   {var, _Lv3, IgnoreEvent},
+                   {var, _Lv4, '_'}]}],
                 _GuardGroups,
-                _Body}, _State) ->
-    [];
+                _Body}, _State)
+  when IgnoreEvent == '_Msg';
+       IgnoreEvent == '_' ->
+    <<>>;
 
 %% We don't need to see catch-all clauses in the protocol
 %% attempt(_Foo = {_, _, _Msg, _}) -> ...
@@ -128,7 +136,7 @@ attempt_clause({clause,
                                    {var, _Line7, '_'}]}}],
                 _GuardGroups,
                 _Body}, _State) ->
-    [];
+    <<>>;
 
 %% Strip off any Variable that the event is bound too: it screws up the sorting of events and we're just
 %% interested in the events themselves, not what they're bound to.
@@ -171,6 +179,7 @@ succeed_clause({clause, _Line1, [{var, _Line2, '_'}], _, _}, _State) ->
 succeed_clause({clause, _Line1, [{tuple, _Line2, [_Props, {var, _Line3, Ignored}, _Context]}], _, _}, _State)
   when Ignored == '_';
        Ignored == '_Msg';
+       Ignored == 'Event';
        Ignored == '_Other' ->
     undefined;
 
@@ -248,12 +257,18 @@ search({'catch',_Line,Expression}, State) ->
     %% No new variables added.
     search(Expression, State);
 
-search({match, _Line, {var, _Line1, Var}, NewEvent}, State) 
+search({match, _Line, {var, _Line1, Var}, NewEvent = {tuple, _, _}}, State)
   when Var == 'Event';
        Var == 'NewEvent' ->
     {EventString, Matches} = event_tuple_string(NewEvent),
-    State#{new_event_tuple => EventString,
+    State#{new_event_tuples => [EventString],
            matches => Matches};
+search({match, _Line, {var, _Lv, 'Event'}, {'case', _Lc, _, Clauses}}, State) ->
+    Tuples = [T || {clause, _, _, _, [T]} <- Clauses],
+    StringsAndMatches = [event_tuple_string(T) || T <- Tuples],
+    {Strings, _} = lists:unzip(StringsAndMatches),
+    State#{new_event_tuples => Strings};
+
 search({match, _Line, {var, _Line1, 'Result'}, Result}, State) ->
     State#{result => Result};
 
@@ -354,14 +369,15 @@ result({tuple, _L, [{atom, _La, fail}, _Reason]}, State) ->
     State#{result => fail};
 result({var, _Lv, 'Result'}, State = #{result := Result}) ->
     result(Result, State);
-result({tuple, _L, [{atom, _La, resend}, _, {var, _Lv, 'NewEvent'}]}, State) ->
+result({tuple, _L, [{atom, _La, resend}, _, {var, _Lv, Var}]}, State)
+  when Var == 'Event'; Var == 'NewEvent' ->
     State#{result => resend,
            new_event_type => resend};
 result({tuple, _L, [{atom, _La, resend}, _, Tuple = {tuple, _Lt, _}]}, State) ->
-    {Strings, _} = event_tuple_string(Tuple),
+    {Event, _} = event_tuple_string(Tuple),
     State#{result => resend,
            new_event_type => resend,
-           new_event => Strings};
+           new_event_tuples => [Event]};
 result({tuple, _L, [{atom, _La, broadcast}, {var, _Lv, 'NewEvent'}]}, State) ->
     State#{result => broadcast,
            new_event_type => broadcast}.
@@ -418,6 +434,17 @@ guard({op, _L, Op, {call, _Lc, {atom, _La, Fun}, []}, {var, _Lv, Var}},
             <<IndexBin/binary, " ", OpBin/binary, " ", FunBin/binary, "()">>
     end;
 
+
+guard({op, _L, Op, {var, _Lv1, Var1}, {var, _Lv2, Var2}},
+      Matches) ->
+    OpBin = atom_to_binary(Op),
+    Var1Bin = atom_to_binary(Var1),
+    Var2Bin = atom_to_binary(Var2),
+
+    MaybeIndex1 = to_bin(maps:get(Var1Bin, Matches, Var1Bin)),
+    MaybeIndex2 = to_bin(maps:get(Var2Bin, Matches, Var2Bin)),
+    <<MaybeIndex1/binary, " ", OpBin/binary, " ", MaybeIndex2/binary, "()">>;
+
 % {op,{34,20}, '==', {var,{34,8},'HitOrEffect'}, {atom,{34,23},hit}},
 % {op,{34,40}, '==', {var,{34,28},'HitOrEffect'}, {atom,{34,43},effect}}
 guard({op, _L, Op, {var, _Lv, Var}, {atom, _La, Atom}},
@@ -455,6 +482,11 @@ guard({op, _L, Op, Op1, Op2}, Matches) ->
     Op2Bin = guard(Op2, Matches),
     <<"(", Op1Bin/binary, " ", OpBin/binary, " ", Op2Bin/binary, ")">>.
 
+to_bin(Int) when is_integer(Int) ->
+    integer_to_binary(Int);
+to_bin(Bin) when is_binary(Bin) ->
+    Bin.
+
 %% This is a list of generators _or_ filters
 %% which are simply expressions
 %% A generator is a target and a source
@@ -465,24 +497,31 @@ lc_bc_qual({b_generate,_Line,Target,Source}, State) ->
 lc_bc_qual(FilterExpression, State) ->
     search(FilterExpression, State).
 
+event_tuple_string({match, _L, _var, Tuple}) ->
+    event_tuple_string(Tuple);
 event_tuple_string({tuple, _L, Elements}) ->
-    {Strings, Matches} = event_tuple_string(Elements, 1, [], #{}),
-    Strings2 = lists:flatten(lists:join(",", Strings)),
-    {Strings2, Matches}.
+    {Parts, Matches} = event_tuple_string(Elements, 1, [], #{}),
+    Parts2 = lists:join(",", Parts),
+    {Parts2, Matches}.
 
 event_tuple_string([], _Index, Strings, Matches) ->
     {Strings, Matches};
-event_tuple_string([{var, _, Var} | Rest], Index, Strings, Matches) ->
-    Strings2 = Strings ++ [integer_to_list(Index)],
+event_tuple_string([{var, _, '_'} | Rest], Index, Parts, Matches) ->
+    Parts2 = Parts ++ [integer_to_binary(Index)],
+    event_tuple_string(Rest, Index + 1, Parts2, Matches);
+event_tuple_string([{var, _, Var} | Rest], Index, Parts, Matches) ->
+    Parts2 = Parts ++ [integer_to_binary(Index)],
     Matches2 = Matches#{atom_to_binary(Var) => Index},
-    event_tuple_string(Rest, Index + 1, Strings2, Matches2);
-event_tuple_string([{atom, _, Atom} | Rest], Index, Strings, Matches) ->
-    Strings2 = Strings ++ [atom_to_list(Atom)],
-    event_tuple_string(Rest, Index, Strings2, Matches);
-event_tuple_string([_ | Rest], Index, Strings, Matches) ->
-    Strings2 = Strings ++ [integer_to_list(Index)],
-    event_tuple_string(Rest, Index, Strings2, Matches).
+    event_tuple_string(Rest, Index + 1, Parts2, Matches2);
+event_tuple_string([{atom, _, Atom} | Rest], Index, Parts, Matches) ->
+    Parts2 = Parts ++ [atom_to_list(Atom)],
+    event_tuple_string(Rest, Index, Parts2, Matches);
+event_tuple_string([_ | Rest], Index, Parts, Matches) ->
+    Parts2 = Parts ++ [integer_to_binary(Index)],
+    event_tuple_string(Rest, Index, Parts2, Matches).
 
+map({var, _L, '_'}, _Matches) ->
+    <<>>;
 map({map, _Lm, MapFields}, Matches) ->
     [map_field(MapField, Matches) || MapField <- MapFields].
 
@@ -497,10 +536,30 @@ map_field({map_field_exact, _Lm, {atom, _La, Field}, {var, _Lv, Var}},
             IndexBin = integer_to_binary(Index),
             <<IndexBin/binary, " == ", FieldBin/binary>>
     end;
+map_field({map_field_exact, _Lm, {atom, _La1, Field}, {atom, _La2, Atom}}, _) ->
+    FieldBin = atom_to_binary(Field),
+    AtomBin = atom_to_binary(Atom),
+    <<FieldBin/binary, " == ", AtomBin/binary>>;
 map_field({map_field_exact, _Lm,
            {atom, _La, Field},
            {tuple, _Lt, [{var, _Lv1, Var},
                          {var, _Lv2, '_'}]}},
+          Matches) ->
+    FieldBin = atom_to_binary(Field),
+    VarBin = atom_to_binary(Var),
+    case maps:get(VarBin, Matches, undefined) of
+        undefined ->
+            <<FieldBin/binary, " == ", VarBin/binary>>;
+        Index when is_integer(Index) ->
+            IndexBin = integer_to_binary(Index),
+            <<IndexBin/binary, " == ", FieldBin/binary>>
+    end;
+map_field({map_field_exact, _Lm,
+           {atom, _La, Field},
+           {tuple, _Lt, [_,
+                         _,
+                         {var, _Lv3, Var},
+                         _]}},
           Matches) ->
     FieldBin = atom_to_binary(Field),
     VarBin = atom_to_binary(Var),
