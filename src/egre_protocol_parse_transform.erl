@@ -4,24 +4,71 @@
 -export([parse_transform/2]).
 
 parse_transform(Forms, _Options) ->
-    io:format(user, "Forms = ~p~n", [Forms]),
+    %io:format(user, "Forms = ~p~n", [Forms]),
     io:format("~~", []),
 
     Module = module(Forms),
     Events = events(Forms, #{module => Module,
                              sub => <<"false">>,
-                             custom => <<>>}),
+                             custom => <<>>,
+                             new_event_tuples => [],
+                             children => []}),
 
-    SerializedEvents = lists:map(fun serialize/1, Events),
-    %io:format("~p", [StateCharlists]),
+    Events2 = [serialize_events(E) || E <- Events, is_map(E)],
 
-    Filename = <<"protocol">>,
-    {ok, File} = file:open(Filename, [write, append]),
-    [write_state(File, Event) || Event <- SerializedEvents],
-    file:close(File),
+    AllEvents =
+        maps:from_list(
+          lists:zip(lists:seq(1, length(Events2)),
+                    Events2)),
+
+    EventsWithChildren =
+        lists:map(fun(Event) ->
+                      find_children(Event, AllEvents)
+                  end,
+                  Events2),
+
+    io:format("* CM *****************~n"),
+    io:format("~p~n", [EventsWithChildren]),
+    io:format("* CM *****************~n"),
+    [io:format("Z~p~n~p~n~p~n", [Event, Spawn, Children]) ||
+     #{event := Event,
+       new_event_tuples := Spawn,
+       children := Children} <- EventsWithChildren],
+    io:format("* CM *****************~n"),
+
+    %SerializedEvents = lists:map(fun serialize/1, Events),
+    %%io:format("~p", [StateCharlists]),
+
+    %Filename = <<"protocol">>,
+    %{ok, File} = file:open(Filename, [write, append]),
+    %[write_event(File, Event) || Event <- EventsWithChildren],
+    %file:close(File),
+
     Forms.
 
-write_state(File, StateCharlist) ->
+serialize_events(Event = #{event := EventIolist, new_event_tuples := NewTuplesIolist}) ->
+    Event#{event => iolist_to_binary(EventIolist),
+           new_event_tuples => [iolist_to_binary(Spawn) || Spawn <- NewTuplesIolist]}.
+
+find_children(Event = #{new_event_tuples := Spawn}, AllEvents) when is_list(Spawn) ->
+    {Event2, _} =
+        lists:foldl(fun find_children_/2, {Event, AllEvents}, Spawn),
+    Event2;
+find_children(Other, _) ->
+  io:format(user, "Other = ~p~n", [Other]),
+    Other.
+
+find_children_(Spawn, {Parent = #{children := Children}, AllEvents}) ->
+    SpawnChildren =
+        maps:filtermap(fun(K, #{event := Event}) when Spawn == Event ->
+                               {true, K};
+                          (_, _) ->
+                               false
+                       end,
+                       AllEvents),
+    {Parent#{children => [{Spawn, maps:values(SpawnChildren)} | Children]}, AllEvents}.
+
+write_event(File, StateCharlist) ->
     case file:write(File, StateCharlist) of
         ok ->
             ok;
@@ -30,14 +77,15 @@ write_state(File, StateCharlist) ->
     end.
 
 serialize(#{module := Module,
-              context := Context,
+              %context := Context,
               matches := Matches,
               guard_groups := GuardGroups,
               stage := Stage,
               sub := Sub,
               event := Event,
-              custom := Custom}) ->
-    ContextBin = string:pad(io_lib:format("~p", [Context]), 16),
+              custom := Custom,
+              new_event_tuples := NewEvents}) ->
+    %ContextBin = string:pad(io_lib:format("~p", [Context]), 16),
     MatchesIolist = serialize_matches(Matches),
     EventField =
         case {GuardGroups, Custom} of
@@ -49,7 +97,18 @@ serialize(#{module := Module,
                  Custom]
         end,
 
-    EventCharlist = string:pad(EventField, 110, trailing),
+    EventBin = iolist_to_binary(EventField),
+    NewEventsBin =
+        case NewEvents of
+            [] ->
+                <<>>;
+            _ ->
+                iolist_to_binary([<<"\n  ">>,
+                                  lists:join(<<"\n  ">>, NewEvents)])
+        end,
+
+
+    EventCharlist = string:pad(EventBin, 110, trailing),
     ModuleCharlist = string:pad(Module, 25),
     StageCharlist = string:pad(Stage, 9),
     SubCharlist = string:pad(Sub, 7),
@@ -57,9 +116,10 @@ serialize(#{module := Module,
      ModuleCharlist,
      StageCharlist,
      SubCharlist,
-     ContextBin,
+     %ContextBin,
      <<" ">>,
      MatchesIolist,
+     NewEventsBin,
      <<"\n">>];
 serialize(<<>>) ->
     <<>>;
@@ -514,11 +574,11 @@ event_tuple_string([{var, _, Var} | Rest], Index, Parts, Matches) ->
     Matches2 = Matches#{atom_to_binary(Var) => Index},
     event_tuple_string(Rest, Index + 1, Parts2, Matches2);
 event_tuple_string([{atom, _, Atom} | Rest], Index, Parts, Matches) ->
-    Parts2 = Parts ++ [atom_to_list(Atom)],
+    Parts2 = Parts ++ [atom_to_binary(Atom)],
     event_tuple_string(Rest, Index, Parts2, Matches);
 event_tuple_string([_ | Rest], Index, Parts, Matches) ->
     Parts2 = Parts ++ [integer_to_binary(Index)],
-    event_tuple_string(Rest, Index, Parts2, Matches).
+    event_tuple_string(Rest, Index + 1, Parts2, Matches).
 
 map({var, _L, '_'}, _Matches) ->
     <<>>;
