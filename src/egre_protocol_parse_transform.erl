@@ -33,26 +33,51 @@ parse_transform(Forms, _Options) ->
                   end,
                   AllEventsWithChildren),
 
-    io:format("* CM *****************~n"),
-    io:format("~p~n", [AllEventsWithParents]),
-    io:format("* CM *****************~n"),
-    [io:format("Event, Spawn, Spawn-Children, Parents map~n  ~p~n  ~p~n  ~p~n  ~p~n", [Event, Spawn, Children, Parents]) ||
-     {_Index,
-      #{event := Event,
-        new_event_tuples := Spawn,
-        children := Children,
-        parents := Parents}} <- maps:to_list(AllEventsWithParents)],
-    io:format("* CM *****************~n"),
+    AllEventsSerialized =
+        maps:map(fun(_, Event) ->
+                         serialize(Event)
+                 end,
+                 AllEventsWithParents),
 
-    %SerializedEvents = lists:map(fun serialize/1, Events),
-    %%io:format("~p", [StateCharlists]),
+    TopLevelEvents =
+        lists:filter(fun({_Idx, #{parents := []}}) ->
+                         true;
+                        (_) ->
+                         false
+                     end,
+                     maps:to_list(AllEventsSerialized)),
 
-    %Filename = <<"protocol">>,
-    %{ok, File} = file:open(Filename, [write, append]),
+
+    Filename = <<"protocol">>,
+    {ok, IO} = file:open(Filename, [write, append]),
     %[write_event(File, Event) || Event <- EventsWithChildren],
-    %file:close(File),
+    [write_event(IO, E, "", AllEventsSerialized) || {_K, E} <- TopLevelEvents],
+    file:close(IO),
 
     Forms.
+
+write_event(IO,
+            #{header := Header,
+              new_event_tuples := Spawn,
+              children := Children},
+            Indent,
+            Events) ->
+    case file:write(IO, [Indent, Header]) of
+        ok ->
+            ok;
+        Error ->
+            io:format(user, "Write failed: ~p~n~p~n", [Error, Header])
+    end,
+
+    [write_spawn(IO, Indent ++ "    ", S, Children, Events) || S <- Spawn].
+
+write_spawn(IO, Indent, Event, SpawnChildren, Events) ->
+    Children = proplists:get_value(Event, SpawnChildren, []),
+    [write_child(IO, Indent ++ "    ", ChildIndex, Events) || ChildIndex <- Children].
+
+write_child(IO, Indent, Index, Events) ->
+    Child = maps:get(Index, Events),
+    write_event(IO, Child, Indent, Events).
 
 serialize_events(Event = #{event := EventIolist, new_event_tuples := NewTuplesIolist}) ->
     Event#{event => iolist_to_binary(EventIolist),
@@ -97,25 +122,16 @@ has_child(#{children := Spawn}, K) ->
               end,
               Spawn).
 
-write_event(File, StateCharlist) ->
-    case file:write(File, StateCharlist) of
-        ok ->
-            ok;
-        Error ->
-            io:format(user, "Write failed: ~p~n~p~n", [Error, StateCharlist])
-    end.
-
-serialize(#{module := Module,
-              %context := Context,
-              matches := Matches,
-              guard_groups := GuardGroups,
-              stage := Stage,
-              sub := Sub,
-              event := Event,
-              custom := Custom,
-              new_event_tuples := NewEvents}) ->
+serialize(EventMap = #{module := Module,
+                       %context := Context,
+                       matches := Matches,
+                       guard_groups := GuardGroups,
+                       stage := Stage,
+                       sub := Sub,
+                       event := Event,
+                       custom := Custom}) ->
+io:format(user, "EventMap = ~p~n", [EventMap]),
     %ContextBin = string:pad(io_lib:format("~p", [Context]), 16),
-    MatchesIolist = serialize_matches(Matches),
     EventField =
         case {GuardGroups, Custom} of
             {<<>>, <<>>} ->
@@ -127,37 +143,30 @@ serialize(#{module := Module,
         end,
 
     EventBin = iolist_to_binary(EventField),
-    NewEventsBin =
-        case NewEvents of
-            [] ->
-                <<>>;
-            _ ->
-                iolist_to_binary([<<"\n  ">>,
-                                  lists:join(<<"\n  ">>, NewEvents)])
-        end,
 
+    Header =
+        iolist_to_binary([string:pad(EventBin, 110, trailing),
+                          string:pad(Module, 25),
+                          string:pad(Stage, 9),
+                          string:pad(Sub, 7),
+                          %ContextBin,
+                          <<" ">>,
+                          Matches]),
 
-    EventCharlist = string:pad(EventBin, 110, trailing),
-    ModuleCharlist = string:pad(Module, 25),
-    StageCharlist = string:pad(Stage, 9),
-    SubCharlist = string:pad(Sub, 7),
-    [EventCharlist,
-     ModuleCharlist,
-     StageCharlist,
-     SubCharlist,
-     %ContextBin,
-     <<" ">>,
-     MatchesIolist,
-     NewEventsBin,
-     <<"\n">>];
+    EventMap#{header => Header};
+
 serialize(<<>>) ->
     <<>>;
 serialize(Other) ->
     io:format("Couldn't serialize state:~n~p~n", [Other]),
     <<>>.
 
-serialize_matches(Map) ->
-    SortedByIndex = lists:sort(fun({_, V1}, {_, V2}) -> V1 =< V2 end, maps:to_list(Map)),
+serialize_matches(MatchVarToIndexMap) ->
+    SortedByIndex =
+        lists:sort(fun({_MatchVar1, Index1}, {_MatchVar2, Index2}) ->
+                       Index1 =< Index2
+                   end,
+                   maps:to_list(MatchVarToIndexMap)),
     [[integer_to_binary(V), <<": ">>, K, <<", ">>] || {K, V} <- SortedByIndex].
 
 module([{attribute, _Line, module, Module} | _]) ->
@@ -243,7 +252,10 @@ attempt_clause({clause, _Line, Head, GuardGroups, Body}, State) ->
 
     State1 = attempt_head(CustomData, Props, Event, Context, State),
     State2 = guard_groups(GuardGroups, State1),
-    _State3 = lists:foldl(fun search/2, State2, Body).
+    Matches = maps:get(matches, State2),
+    State3 = State2#{matches => serialize_matches(Matches)},
+    State4 = lists:foldl(fun search/2, State3, Body),
+    State4.
 
 attempt_head(CustomData, _Props, Event, Context, State) ->
     %{Parents, Props, Event}.
@@ -282,7 +294,9 @@ succeed_clause({clause, _Line0, Head, GuardGroups, Body}, State) ->
 
     State1 = succeed_head(Props, Event, Context, State),
     State2 = guard_groups(GuardGroups, State1),
-    _State3 = lists:foldl(fun search/2, State2, Body).
+    Matches = maps:get(matches, State2),
+    State3 = State2#{matches => serialize_matches(Matches)},
+    _State4 = lists:foldl(fun search/2, State3, Body).
 
 succeed_head(_Props, Event, Context, State) ->
     {EventString, Matches} = event_tuple_string(Event),
@@ -349,9 +363,8 @@ search({'catch',_Line,Expression}, State) ->
 search({match, _Line, {var, _Line1, Var}, NewEvent = {tuple, _, _}}, State)
   when Var == 'Event';
        Var == 'NewEvent' ->
-    {EventString, Matches} = event_tuple_string(NewEvent),
-    State#{new_event_tuples => [EventString],
-           matches => Matches};
+    {EventString, _Matches} = event_tuple_string(NewEvent),
+    State#{new_event_tuples => [EventString]};
 search({match, _Line, {var, _Lv, 'Event'}, {'case', _Lc, _, Clauses}}, State) ->
     Tuples = [T || {clause, _, _, _, [T]} <- Clauses],
     StringsAndMatches = [event_tuple_string(T) || T <- Tuples],
