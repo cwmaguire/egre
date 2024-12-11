@@ -47,11 +47,22 @@ parse_transform(Forms, _Options) ->
                      end,
                      maps:to_list(AllEventsSerialized)),
 
+    SortedEvents =
+        lists:sort(
+            fun({_, #{event := E, stage := <<"attempt">>}}, {_, #{event := E}}) ->
+                    true;
+               ({_, #{event := E, stage := <<"succeed">>}}, {_, #{event := E}}) ->
+                    false;
+               ({_, #{event := E1}}, {_, #{event := E2}}) ->
+                E1 < E2
+            end,
+            TopLevelEvents),
+
 
     Filename = <<"protocol">>,
     {ok, IO} = file:open(Filename, [write, append]),
     %[write_event(File, Event) || Event <- EventsWithChildren],
-    [write_event(IO, E, "", AllEventsSerialized) || {_K, E} <- TopLevelEvents],
+    [write_event(IO, E, "", AllEventsSerialized) || {_K, E} <- SortedEvents],
     file:close(IO),
 
     Forms.
@@ -62,7 +73,7 @@ write_event(IO,
               children := Children},
             Indent,
             Events) ->
-    case file:write(IO, [Indent, Header]) of
+    case file:write(IO, [Indent, Header, <<"\n">>]) of
         ok ->
             ok;
         Error ->
@@ -72,6 +83,7 @@ write_event(IO,
     [write_spawn(IO, Indent ++ "    ", S, Children, Events) || S <- Spawn].
 
 write_spawn(IO, Indent, Event, SpawnChildren, Events) ->
+    file:write(IO, [Indent, Event, <<"\n">>]),
     Children = proplists:get_value(Event, SpawnChildren, []),
     [write_child(IO, Indent ++ "    ", ChildIndex, Events) || ChildIndex <- Children].
 
@@ -145,7 +157,7 @@ io:format(user, "EventMap = ~p~n", [EventMap]),
     EventBin = iolist_to_binary(EventField),
 
     Header =
-        iolist_to_binary([string:pad(EventBin, 110, trailing),
+        iolist_to_binary([string:pad(EventBin, 60, trailing),
                           string:pad(Module, 25),
                           string:pad(Stage, 9),
                           string:pad(Sub, 7),
