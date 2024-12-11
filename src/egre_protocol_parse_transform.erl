@@ -22,8 +22,8 @@ parse_transform(Forms, _Options) ->
                     Events2)),
 
     AllEventsWithChildren =
-        maps:map(fun(_K, Event) ->
-                      find_children(Event, AllEvents)
+        maps:map(fun(K, Event) ->
+                      find_children(K, Event, AllEvents)
                   end,
                   AllEvents),
 
@@ -62,17 +62,20 @@ parse_transform(Forms, _Options) ->
     Filename = <<"protocol">>,
     {ok, IO} = file:open(Filename, [write, append]),
     %[write_event(File, Event) || Event <- EventsWithChildren],
-    [write_event(IO, E, "", AllEventsSerialized) || {_K, E} <- SortedEvents],
+    [write_event(IO, K, E, "", AllEventsSerialized) || {K, E} <- SortedEvents],
     file:close(IO),
 
     Forms.
 
 write_event(IO,
+            Index,
             #{header := Header,
               new_event_tuples := Spawn,
               children := Children},
             Indent,
             Events) ->
+
+    io:format(user, "Index: ~p, Header = ~p~n~p~n", [Index, Header, Children]),
     case file:write(IO, [Indent, Header, <<"\n">>]) of
         ok ->
             ok;
@@ -89,29 +92,37 @@ write_spawn(IO, Indent, Event, SpawnChildren, Events) ->
 
 write_child(IO, Indent, Index, Events) ->
     Child = maps:get(Index, Events),
-    write_event(IO, Child, Indent, Events).
+    write_event(IO, Index, Child, Indent, Events).
 
 serialize_events(Event = #{event := EventIolist, new_event_tuples := NewTuplesIolist}) ->
     Event#{event => iolist_to_binary(EventIolist),
            new_event_tuples => [iolist_to_binary(Spawn) || Spawn <- NewTuplesIolist]}.
 
-find_children(Event = #{new_event_tuples := Spawn}, AllEvents) when is_list(Spawn) ->
-    {Event2, _} =
-        lists:foldl(fun find_children_/2, {Event, AllEvents}, Spawn),
+find_children(Index,
+              Event = #{new_event_tuples := Spawn},
+              AllEvents) when is_list(Spawn) ->
+    {_Idx, Event2, _AllEvents} =
+        lists:foldl(fun find_children_/2,
+                    {Index, Event, AllEvents},
+                    Spawn),
     Event2;
-find_children(Other, _) ->
-  io:format(user, "Other = ~p~n", [Other]),
+find_children(Index, Other, _) ->
+  io:format(user, "Index = ~p; Other = ~p~n", [Index, Other]),
     Other.
 
-find_children_(Spawn, {Parent = #{children := Children}, AllEvents}) ->
+find_children_(Spawn, {Index, Parent = #{children := Children}, AllEvents}) ->
     SpawnChildren =
-        maps:filtermap(fun(K, #{event := Event}) when Spawn == Event ->
-                               {true, K};
+        maps:filtermap(fun(ChildIndex, #{event := Event})
+                         when Index /= ChildIndex,
+                              Spawn == Event ->
+                               {true, ChildIndex};
                           (_, _) ->
                                false
                        end,
                        AllEvents),
-    {Parent#{children => [{Spawn, maps:values(SpawnChildren)} | Children]}, AllEvents}.
+    {Index,
+     Parent#{children => [{Spawn, maps:values(SpawnChildren)} | Children]},
+     AllEvents}.
 
 find_parents(ChildIndex, ChildEvent, Events) ->
     Parents =
@@ -142,7 +153,7 @@ serialize(EventMap = #{module := Module,
                        sub := Sub,
                        event := Event,
                        custom := Custom}) ->
-io:format(user, "EventMap = ~p~n", [EventMap]),
+
     %ContextBin = string:pad(io_lib:format("~p", [Context]), 16),
     EventField =
         case {GuardGroups, Custom} of
