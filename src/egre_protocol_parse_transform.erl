@@ -21,19 +21,27 @@ parse_transform(Forms, _Options) ->
           lists:zip(lists:seq(1, length(Events2)),
                     Events2)),
 
-    EventsWithChildren =
-        lists:map(fun(Event) ->
+    AllEventsWithChildren =
+        maps:map(fun(_K, Event) ->
                       find_children(Event, AllEvents)
                   end,
-                  Events2),
+                  AllEvents),
+
+    AllEventsWithParents =
+        maps:map(fun(EventIndex, Event) ->
+                      find_parents(EventIndex, Event, AllEventsWithChildren)
+                  end,
+                  AllEventsWithChildren),
 
     io:format("* CM *****************~n"),
-    io:format("~p~n", [EventsWithChildren]),
+    io:format("~p~n", [AllEventsWithParents]),
     io:format("* CM *****************~n"),
-    [io:format("Z~p~n~p~n~p~n", [Event, Spawn, Children]) ||
-     #{event := Event,
-       new_event_tuples := Spawn,
-       children := Children} <- EventsWithChildren],
+    [io:format("Event, Spawn, Spawn-Children, Parents map~n  ~p~n  ~p~n  ~p~n  ~p~n", [Event, Spawn, Children, Parents]) ||
+     {_Index,
+      #{event := Event,
+        new_event_tuples := Spawn,
+        children := Children,
+        parents := Parents}} <- maps:to_list(AllEventsWithParents)],
     io:format("* CM *****************~n"),
 
     %SerializedEvents = lists:map(fun serialize/1, Events),
@@ -67,6 +75,27 @@ find_children_(Spawn, {Parent = #{children := Children}, AllEvents}) ->
                        end,
                        AllEvents),
     {Parent#{children => [{Spawn, maps:values(SpawnChildren)} | Children]}, AllEvents}.
+
+find_parents(ChildIndex, ChildEvent, Events) ->
+    Parents =
+        lists:filtermap(fun({ParentIndex, MaybeParent}) ->
+                            case has_child(MaybeParent, ChildIndex) of
+                                true ->
+                                    {true, ParentIndex};
+                                _ ->
+                                    false
+                            end
+                        end,
+                        maps:to_list(Events)),
+
+    UniqueParents = lists:uniq(Parents),
+    ChildEvent#{parents => UniqueParents}.
+
+has_child(#{children := Spawn}, K) ->
+    lists:any(fun({_, Children}) ->
+                  lists:member(K, Children)
+              end,
+              Spawn).
 
 write_event(File, StateCharlist) ->
     case file:write(File, StateCharlist) of
