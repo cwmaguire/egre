@@ -9,7 +9,7 @@ parse_transform(Forms, _Options) ->
 
     Module = module(Forms),
 
-    Funs = lists:partition(fun is_fun/1, Forms),
+    {Funs, _OtherForms} = lists:partition(fun is_fun/1, Forms),
     {AttemptSucceedFuns, OtherFuns} =
         lists:partition(fun is_attempt_or_succeed_fun/1,
                         Funs),
@@ -28,7 +28,8 @@ parse_transform(Forms, _Options) ->
                            #{},
                            FunEvents),
 
-    Events = events(Forms, DefaultState#{fun_spawn => FunSpawn}),
+    Events = events(AttemptSucceedFuns,
+                    DefaultState#{fun_spawn => FunSpawn}),
 
     Events2 = [match_types(E) || E <- Events, is_map(E)],
     Events3 = [serialize_events(E) || E <- Events2, is_map(E)],
@@ -79,12 +80,16 @@ parse_transform(Forms, _Options) ->
     Filename = <<"protocol">>,
     {ok, IO} = file:open(Filename, [write, append]),
     %[write_event(File, Event) || Event <- EventsWithChildren],
-    [write_event(IO, K, E, "", AllEventsSerialized) || {K, E} <- SortedEvents],
+    [write_event(IO, E, "", AllEventsSerialized) || {_, E} <- SortedEvents],
     file:close(IO),
 
     Forms.
 
-fun_spawn(Spawn, Spawns) ->
+fun_spawn(#{'fun' := Fun,
+            new_event_tuples := Spawns}, FunSpawns) ->
+    FunSpawns#{Fun => Spawns};
+fun_spawn(_, FunSpawns) ->
+    FunSpawns.
 
 match_types(Event = #{type_inference := TypeInference,
                       matches := Matches,
@@ -102,13 +107,7 @@ type_indexes(TypeInference, Matches) ->
     MaybeTypeIndexes = [{Type, maps:get(Var, Matches, undefined)} || {Var, Type} <- TypeInference],
     lists:filter(fun({_, undefined}) -> false; (_) -> true end, MaybeTypeIndexes).
 
-% bad map: [[<<"1">>,<<": ">>,<<"Owner">>,<<", ">>], [<<"2">>,<<": ">>,<<"Self">>,<<", ">>]]
-%   in function  egre_protocol_parse_transform:'-type_indexes/2-lc$^0/1-0-'/2
-%   in call from egre_protocol_parse_transform:type_indexes/2 (src/egre_protocol_parse_transform.erl, line 85)
-%   in call from egre_protocol_parse_transform:match_types/1 (src/egre_protocol_parse_transform.erl, line 75)
-
 write_event(IO,
-            _Index,
             #{header := Header,
               new_event_tuples := Spawn,
               children := Children},
@@ -121,7 +120,6 @@ write_event(IO,
         Error ->
             io:format(user, "Write failed: ~p~n~p~n", [Error, Header])
     end,
-
     [write_spawn(IO, Indent ++ "    ", S, Children, Events) || S <- Spawn].
 
 write_spawn(IO, Indent, {Event, Types}, SpawnChildren, Events) ->
@@ -132,7 +130,7 @@ write_spawn(IO, Indent, {Event, Types}, SpawnChildren, Events) ->
 
 write_child(IO, Indent, Index, Events) ->
     Child = maps:get(Index, Events),
-    write_event(IO, Index, Child, Indent, Events).
+    write_event(IO, Child, Indent, Events).
 
 serialize_events(Event = #{event := EventIolist, new_event_tuples := NewTuplesIolist}) ->
     SerializedSpawn = [{iolist_to_binary(Spawn), Types} || {Spawn, _Matches, Types} <- NewTuplesIolist],
@@ -305,9 +303,19 @@ events({function,_Line, Name, _Arity, Clauses}, State) when Name == 'attempt' ->
     lists:map(fun(Clause) -> attempt_clause(Clause, State) end, Clauses);
 events({function,_Line, Name, _Arity, Clauses}, State) when Name == 'succeed' ->
     lists:map(fun(Clause) -> succeed_clause(Clause, State) end, Clauses);
+events({function,_Line, _Name, _Arity, Clauses}, State) ->
+    lists:map(fun(Clause) -> other_clause(Clause, State) end, Clauses);
 events(_Form, _State) ->
     <<>>.
 
+% {clause,{100,1},[{var,{100,6},'_'}],[],[{atom,{101,5},undefined}]}
+
+other_clause({clause, _L, _Args, GuardGroups, Body}, State) ->
+    %% TODO check for literals bound in the function args,
+    %% e.g. A = <<"a">>, B = b, etc.
+    %% We can get types from those
+    State2 = guard_groups(GuardGroups, State#{matches => #{}}),
+    lists:foldl(fun search/2, State2, Body).
 
 %% We don't need to see catch-all clauses in the protocol
 %% attempt(_) -> ...
@@ -465,9 +473,17 @@ search({call, _Line,
       [_, _, Arg3]}, State) ->
     State#{new_event => Arg3};
 
-search({call,_Line,__Fun, _Args}, State) ->
-    % Don't care about non-event calls
-    State;
+search({call,_Line, Fun, _Args},
+       State = #{new_event_tuples := EventTuples,
+                 fun_spawn := FunSpawn}) ->
+    RemoteSpawn =
+        case FunSpawn of
+            #{Fun := Spawn} ->
+                Spawn;
+            _ ->
+                []
+        end,
+    State#{new_event_tuples => [RemoteSpawn ++ EventTuples]};
 search({'catch',_Line,Expression}, State) ->
     %% No new variables added.
     search(Expression, State);
