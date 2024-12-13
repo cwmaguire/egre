@@ -8,18 +8,35 @@ parse_transform(Forms, _Options) ->
     io:format("~~", []),
 
     Module = module(Forms),
-    Events = events(Forms, #{module => Module,
-                             sub => <<"false">>,
-                             custom => <<>>,
-                             new_event_tuples => [],
-                             children => []}),
 
-    Events2 = [serialize_events(E) || E <- Events, is_map(E)],
+    Funs = lists:partition(fun is_fun/1, Forms),
+    {AttemptSucceedFuns, OtherFuns} =
+        lists:partition(fun is_attempt_or_succeed_fun/1,
+                        Funs),
+
+    DefaultState =
+        #{module => Module,
+          sub => <<"false">>,
+          custom => <<>>,
+          new_event_tuples => [],
+          children => [],
+          type_inference => []},
+
+    FunEvents = events(OtherFuns, DefaultState),
+
+    FunSpawn = lists:foldl(fun fun_spawn/2,
+                           #{},
+                           FunEvents),
+
+    Events = events(Forms, DefaultState#{fun_spawn => FunSpawn}),
+
+    Events2 = [match_types(E) || E <- Events, is_map(E)],
+    Events3 = [serialize_events(E) || E <- Events2, is_map(E)],
 
     AllEvents =
         maps:from_list(
-          lists:zip(lists:seq(1, length(Events2)),
-                    Events2)),
+          lists:zip(lists:seq(1, length(Events3)),
+                    Events3)),
 
     AllEventsWithChildren =
         maps:map(fun(K, Event) ->
@@ -67,15 +84,37 @@ parse_transform(Forms, _Options) ->
 
     Forms.
 
+fun_spawn(Spawn, Spawns) ->
+
+match_types(Event = #{type_inference := TypeInference,
+                      matches := Matches,
+                      new_event_tuples := Spawn}) ->
+    TypeIndexes = type_indexes(TypeInference, Matches),
+    Event2 = Event#{type_indexes => TypeIndexes},
+    Spawn2 = [match_spawn_types(S, TypeInference) || S <- Spawn],
+    Event2#{new_event_tuples => Spawn2}.
+
+match_spawn_types({Event, Matches}, TypeInference) ->
+    TypeIndexes = type_indexes(TypeInference, Matches),
+    {Event, Matches, TypeIndexes}.
+
+type_indexes(TypeInference, Matches) ->
+    MaybeTypeIndexes = [{Type, maps:get(Var, Matches, undefined)} || {Var, Type} <- TypeInference],
+    lists:filter(fun({_, undefined}) -> false; (_) -> true end, MaybeTypeIndexes).
+
+% bad map: [[<<"1">>,<<": ">>,<<"Owner">>,<<", ">>], [<<"2">>,<<": ">>,<<"Self">>,<<", ">>]]
+%   in function  egre_protocol_parse_transform:'-type_indexes/2-lc$^0/1-0-'/2
+%   in call from egre_protocol_parse_transform:type_indexes/2 (src/egre_protocol_parse_transform.erl, line 85)
+%   in call from egre_protocol_parse_transform:match_types/1 (src/egre_protocol_parse_transform.erl, line 75)
+
 write_event(IO,
-            Index,
+            _Index,
             #{header := Header,
               new_event_tuples := Spawn,
               children := Children},
             Indent,
             Events) ->
 
-    io:format(user, "Index: ~p, Header = ~p~n~p~n", [Index, Header, Children]),
     case file:write(IO, [Indent, Header, <<"\n">>]) of
         ok ->
             ok;
@@ -85,8 +124,9 @@ write_event(IO,
 
     [write_spawn(IO, Indent ++ "    ", S, Children, Events) || S <- Spawn].
 
-write_spawn(IO, Indent, Event, SpawnChildren, Events) ->
-    file:write(IO, [Indent, Event, <<"\n">>]),
+write_spawn(IO, Indent, {Event, Types}, SpawnChildren, Events) ->
+    TypesIolist = serialize_types(Types),
+    file:write(IO, [Indent, Event, <<" ">>, TypesIolist, <<"\n">>]),
     Children = proplists:get_value(Event, SpawnChildren, []),
     [write_child(IO, Indent ++ "    ", ChildIndex, Events) || ChildIndex <- Children].
 
@@ -95,8 +135,13 @@ write_child(IO, Indent, Index, Events) ->
     write_event(IO, Index, Child, Indent, Events).
 
 serialize_events(Event = #{event := EventIolist, new_event_tuples := NewTuplesIolist}) ->
+    SerializedSpawn = [{iolist_to_binary(Spawn), Types} || {Spawn, _Matches, Types} <- NewTuplesIolist],
     Event#{event => iolist_to_binary(EventIolist),
-           new_event_tuples => [iolist_to_binary(Spawn) || Spawn <- NewTuplesIolist]}.
+           new_event_tuples => SerializedSpawn}.
+
+serialize_types(Types) ->
+    TypeBins = [[<<"{">>, atom_to_binary(Type), <<", ">>, integer_to_binary(Index), <<"}">>] || {Type, Index} <- Types],
+    lists:join(<<", ">>, TypeBins).
 
 find_children(Index,
               Event = #{new_event_tuples := Spawn},
@@ -110,19 +155,49 @@ find_children(Index, Other, _) ->
   io:format(user, "Index = ~p; Other = ~p~n", [Index, Other]),
     Other.
 
-find_children_(Spawn, {Index, Parent = #{children := Children}, AllEvents}) ->
+find_children_(Spawn,
+               {ParentIndex,
+                Parent = #{children := Children},
+                AllEvents}) ->
     SpawnChildren =
-        maps:filtermap(fun(ChildIndex, #{event := Event})
-                         when Index /= ChildIndex,
-                              Spawn == Event ->
-                               {true, ChildIndex};
-                          (_, _) ->
-                               false
+        maps:filtermap(fun(ChildIndex, ChildEvent) ->
+                           is_child(ChildIndex, ChildEvent, ParentIndex, Spawn)
                        end,
                        AllEvents),
-    {Index,
-     Parent#{children => [{Spawn, maps:values(SpawnChildren)} | Children]},
+
+    Children2 = [{Spawn, maps:values(SpawnChildren)} | Children],
+
+    {ParentIndex,
+     Parent#{children => Children2},
      AllEvents}.
+
+is_child(ChildIndex,
+         #{event := ChildEvent,
+           type_indexes := ChildTypeIndexes},
+         ParentIndex,
+         SpawnEvent = {_, ParentTypeIndexes})
+  when ParentIndex /= ChildIndex,
+       SpawnEvent == ChildEvent ->
+   case types_conflict(ParentTypeIndexes,
+                       ChildTypeIndexes) of
+       false ->
+           {true, ChildIndex};
+       _ ->
+           false
+   end;
+is_child(_, _, _, _) ->
+   false.
+
+types_conflict(PTI = _ParentTypeIndexes, CTI = _ChildTypeIndexes) ->
+    case [0 || {ParentVar, ParentType} <- PTI,
+               {ChildVar, ChildType} <- CTI,
+               ParentVar == ChildVar,
+               ParentType /= ChildType] of
+        [] ->
+            false;
+        _ ->
+            true
+    end.
 
 find_parents(ChildIndex, ChildEvent, Events) ->
     Parents =
@@ -174,7 +249,7 @@ serialize(EventMap = #{module := Module,
                           string:pad(Sub, 7),
                           %ContextBin,
                           <<" ">>,
-                          Matches]),
+                          serialize_matches(Matches)]),
 
     EventMap#{header => Header};
 
@@ -206,6 +281,20 @@ remove_prefix(Prefix, Bin) ->
         Bin_ when Bin_ == Bin ->
             Bin
     end.
+
+is_fun({function, _Line, _Name, _Arity, _Clauses}) ->
+    true;
+is_fun(_) ->
+    false.
+
+is_attempt_or_succeed_fun({function, _Line, Name, _Arity, _Clauses})
+  when Name == 'attempt' ->
+    true;
+is_attempt_or_succeed_fun({function, _Line, Name, _Arity, _Clauses})
+  when Name == 'succeed' ->
+    true;
+is_attempt_or_succeed_fun(_) ->
+    false.
 
 events(Forms, State) when is_list(Forms) ->
     %io:format(user, "Forms = ~p~n", [Forms]),
@@ -275,17 +364,17 @@ attempt_clause({clause, _Line, Head, GuardGroups, Body}, State) ->
 
     State1 = attempt_head(CustomData, Props, Event, Context, State),
     State2 = guard_groups(GuardGroups, State1),
-    Matches = maps:get(matches, State2),
-    State3 = State2#{matches => serialize_matches(Matches)},
-    State4 = lists:foldl(fun search/2, State3, Body),
-    State4.
+    %Matches = maps:get(matches, State2),
+    %State3 = State2#{matches => serialize_matches(Matches)},
+    lists:foldl(fun search/2, State2, Body).
 
 attempt_head(CustomData, _Props, Event, Context, State) ->
     %{Parents, Props, Event}.
     {EventString, Matches} = event_tuple_string(Event),
-    CustomDataBin = map(CustomData, Matches),
+    {CustomDataIolist, TypeInference} = map(CustomData, Matches),
     ContextBin = print(Context),
-    State#{custom => CustomDataBin,
+    State#{custom => CustomDataIolist,
+           type_inference => TypeInference,
            event => EventString,
            context => ContextBin,
            matches => Matches,
@@ -317,9 +406,9 @@ succeed_clause({clause, _Line0, Head, GuardGroups, Body}, State) ->
 
     State1 = succeed_head(Props, Event, Context, State),
     State2 = guard_groups(GuardGroups, State1),
-    Matches = maps:get(matches, State2),
-    State3 = State2#{matches => serialize_matches(Matches)},
-    _State4 = lists:foldl(fun search/2, State3, Body).
+    %Matches = maps:get(matches, State2),
+    %State3 = State2#{matches => serialize_matches(Matches)},
+    lists:foldl(fun search/2, State2, Body).
 
 succeed_head(_Props, Event, Context, State) ->
     {EventString, Matches} = event_tuple_string(Event),
@@ -386,13 +475,13 @@ search({'catch',_Line,Expression}, State) ->
 search({match, _Line, {var, _Line1, Var}, NewEvent = {tuple, _, _}}, State)
   when Var == 'Event';
        Var == 'NewEvent' ->
-    {EventString, _Matches} = event_tuple_string(NewEvent),
-    State#{new_event_tuples => [EventString]};
+    {EventString, Matches} = event_tuple_string(NewEvent),
+    State#{new_event_tuples => [{EventString, Matches}]};
 search({match, _Line, {var, _Lv, 'Event'}, {'case', _Lc, _, Clauses}}, State) ->
     Tuples = [T || {clause, _, _, _, [T]} <- Clauses],
     StringsAndMatches = [event_tuple_string(T) || T <- Tuples],
-    {Strings, _} = lists:unzip(StringsAndMatches),
-    State#{new_event_tuples => Strings};
+    %{Strings, _} = lists:unzip(StringsAndMatches),
+    State#{new_event_tuples => StringsAndMatches};
 
 search({match, _Line, {var, _Line1, 'Result'}, Result}, State) ->
     State#{result => Result};
@@ -499,10 +588,10 @@ result({tuple, _L, [{atom, _La, resend}, _, {var, _Lv, Var}]}, State)
     State#{result => resend,
            new_event_type => resend};
 result({tuple, _L, [{atom, _La, resend}, _, Tuple = {tuple, _Lt, _}]}, State) ->
-    {Event, _} = event_tuple_string(Tuple),
+    EventMatches = event_tuple_string(Tuple),
     State#{result => resend,
            new_event_type => resend,
-           new_event_tuples => [Event]};
+           new_event_tuples => [EventMatches]};
 result({tuple, _L, [{atom, _La, broadcast}, {var, _Lv, 'NewEvent'}]}, State) ->
     State#{result => broadcast,
            new_event_type => broadcast}.
@@ -512,25 +601,56 @@ expr_field({record_field, _Lf, {atom, _La, _F}, Expr}, State) ->
 expr_field({record_field, _Lf, {var,_La,'_'}, Expr}, State) ->
     search(Expr, State).
 
-guard_groups(GuardGroups, State = #{matches := Matches}) ->
+guard_groups(GuardGroups, State = #{matches := Matches,
+                                    type_inference := TypeInference}) ->
     %io:format(user, "GuardGroups = ~p~n", [GuardGroups]),
-    GuardGroups2 = [guard_group_conjunction(GG, Matches) || GG <- GuardGroups],
-    State#{guard_groups => lists:join(<<", ">>, GuardGroups2)}.
+    GuardGroupTypes = [guard_group_conjunction(GG, Matches) || GG <- GuardGroups],
+    {GuardGroups2, Types} = lists:unzip(GuardGroupTypes),
+    FlattenedTypes = lists:flatten(Types),
+    ValidTypes = [T || T = {_, Atom} <- FlattenedTypes, Atom /= undefined],
+    DerivedTypes = derive_types(ValidTypes),
+    AllTypes = TypeInference ++ DerivedTypes,
+    UniqueTypes = lists:uniq(AllTypes),
+    State#{guard_groups => lists:join(<<"; ">>, GuardGroups2),
+           type_inference => UniqueTypes}.
+
+derive_types(Types) ->
+    {VarVarTypes, ActualTypes} =
+        lists:partition(fun({V1, V2})
+                          when is_binary(V1),
+                               is_binary(V2) ->
+                            true;
+                           (_) ->
+                            false
+                        end,
+                        Types),
+    {NewTypes, _} = lists:foldl(fun derive_types/2, {[], ActualTypes}, VarVarTypes),
+    ActualTypes ++ NewTypes.
+
+derive_types({Var1, Var2}, {NewTypes, ActualTypes}) ->
+    Type1s = [T || {Var, T} <- ActualTypes, Var == Var1],
+    Type2s = [T || {Var, T} <- ActualTypes, Var == Var2],
+    {[Type1s ++ Type2s ++ NewTypes], ActualTypes}.
 
 guard_group_conjunction(Guards, Matches) ->
-    lists:join(<<", ">>, [guard(Guard, Matches) || Guard <- Guards]).
+    GuardsAndTypes = [guard(Guard, Matches) || Guard <- Guards],
+    {GuardBins, Types} = lists:unzip(GuardsAndTypes),
+    {lists:join(<<", ">>, GuardBins), Types}.
 
 guard({call, _L, {atom, _La, Fun}, [{var, _Lv, Var}]},
       Matches) ->
     FunBin = atom_to_binary(Fun),
     VarBin = atom_to_binary(Var),
-    case maps:get(VarBin, Matches, undefined) of
-        undefined ->
-            <<FunBin/binary, "(", VarBin/binary, ")">>;
-        Index when is_integer(Index) ->
-            IndexBin = integer_to_binary(Index),
-            <<FunBin/binary, "(", IndexBin/binary, ")">>
-    end;
+    Type = maybe_type_inference(Fun),
+    Bin =
+        case maps:get(VarBin, Matches, undefined) of
+            undefined ->
+                <<FunBin/binary, "(", VarBin/binary, ")">>;
+            Index when is_integer(Index) ->
+                IndexBin = integer_to_binary(Index),
+                <<FunBin/binary, "(", IndexBin/binary, ")">>
+        end,
+    {Bin, {VarBin, Type}};
 
 % {op,{33,13}, '==', {var,{33,8},'Self'}, {call,{33,16},{atom,{33,16},self},[]}},
 guard({op, _L, Op, {var, _Lv, Var}, {call, _Lc, {atom, _La, Fun}, []}},
@@ -538,26 +658,32 @@ guard({op, _L, Op, {var, _Lv, Var}, {call, _Lc, {atom, _La, Fun}, []}},
     OpBin = atom_to_binary(Op),
     VarBin = atom_to_binary(Var),
     FunBin = atom_to_binary(Fun),
-    case maps:get(VarBin, Matches, undefined) of
-        undefined ->
-            <<VarBin/binary, " ", OpBin/binary, " ", FunBin/binary, "()">>;
-        Index when is_integer(Index) ->
-            IndexBin = integer_to_binary(Index),
-            <<IndexBin/binary, " ", OpBin/binary, " ", FunBin/binary, "()">>
-    end;
+    Type = maybe_type_inference(Fun),
+    Bin =
+        case maps:get(VarBin, Matches, undefined) of
+            undefined ->
+                <<VarBin/binary, " ", OpBin/binary, " ", FunBin/binary, "()">>;
+            Index when is_integer(Index) ->
+                IndexBin = integer_to_binary(Index),
+                <<IndexBin/binary, " ", OpBin/binary, " ", FunBin/binary, "()">>
+        end,
+    {Bin, {VarBin, Type}};
 
 guard({op, _L, Op, {call, _Lc, {atom, _La, Fun}, []}, {var, _Lv, Var}},
       Matches) ->
     OpBin = atom_to_binary(Op),
     VarBin = atom_to_binary(Var),
     FunBin = atom_to_binary(Fun),
-    case maps:get(VarBin, Matches, undefined) of
-        undefined ->
-            <<VarBin/binary, " ", OpBin/binary, " ", FunBin/binary, "()">>;
-        Index when is_integer(Index) ->
-            IndexBin = integer_to_binary(Index),
-            <<IndexBin/binary, " ", OpBin/binary, " ", FunBin/binary, "()">>
-    end;
+    Type = maybe_type_inference(Fun),
+    Bin =
+        case maps:get(VarBin, Matches, undefined) of
+            undefined ->
+                <<VarBin/binary, " ", OpBin/binary, " ", FunBin/binary, "()">>;
+            Index when is_integer(Index) ->
+                IndexBin = integer_to_binary(Index),
+                <<IndexBin/binary, " ", OpBin/binary, " ", FunBin/binary, "()">>
+        end,
+    {Bin, {VarBin, Type}};
 
 
 guard({op, _L, Op, {var, _Lv1, Var1}, {var, _Lv2, Var2}},
@@ -568,7 +694,8 @@ guard({op, _L, Op, {var, _Lv1, Var1}, {var, _Lv2, Var2}},
 
     MaybeIndex1 = to_bin(maps:get(Var1Bin, Matches, Var1Bin)),
     MaybeIndex2 = to_bin(maps:get(Var2Bin, Matches, Var2Bin)),
-    <<MaybeIndex1/binary, " ", OpBin/binary, " ", MaybeIndex2/binary, "()">>;
+    Bin = <<MaybeIndex1/binary, " ", OpBin/binary, " ", MaybeIndex2/binary, "()">>,
+    {Bin, {Var1Bin, Var2Bin}};
 
 % {op,{34,20}, '==', {var,{34,8},'HitOrEffect'}, {atom,{34,23},hit}},
 % {op,{34,40}, '==', {var,{34,28},'HitOrEffect'}, {atom,{34,43},effect}}
@@ -577,35 +704,54 @@ guard({op, _L, Op, {var, _Lv, Var}, {atom, _La, Atom}},
     OpBin = atom_to_binary(Op),
     VarBin = atom_to_binary(Var),
     AtomBin = atom_to_binary(Atom),
-    case maps:get(VarBin, Matches, undefined) of
-        undefined ->
-            <<VarBin/binary, " ", OpBin/binary, " ", AtomBin/binary>>;
-        Index when is_integer(Index) ->
-            IndexBin = integer_to_binary(Index),
-            <<IndexBin/binary, " ", OpBin/binary, " ", AtomBin/binary>>
-    end;
+    Bin =
+        case maps:get(VarBin, Matches, undefined) of
+            undefined ->
+                <<VarBin/binary, " ", OpBin/binary, " ", AtomBin/binary>>;
+            Index when is_integer(Index) ->
+                IndexBin = integer_to_binary(Index),
+                <<IndexBin/binary, " ", OpBin/binary, " ", AtomBin/binary>>
+        end,
+    {Bin, {VarBin, atom}};
 
 guard({op, _L, Op, {var, _Lv, Var}, {integer, _La, Int}},
       Matches) ->
     OpBin = atom_to_binary(Op),
     VarBin = atom_to_binary(Var),
     IntBin = integer_to_binary(Int),
-    case maps:get(VarBin, Matches, undefined) of
-        undefined ->
-            <<VarBin/binary, " ", OpBin/binary, " ", IntBin/binary>>;
-        Index when is_integer(Index) ->
-            IndexBin = integer_to_binary(Index),
-            <<IndexBin/binary, " ", OpBin/binary, " ", IntBin/binary>>
-    end;
+    Bin =
+        case maps:get(VarBin, Matches, undefined) of
+            undefined ->
+                <<VarBin/binary, " ", OpBin/binary, " ", IntBin/binary>>;
+            Index when is_integer(Index) ->
+                IndexBin = integer_to_binary(Index),
+                <<IndexBin/binary, " ", OpBin/binary, " ", IntBin/binary>>
+        end,
+    {Bin, {VarBin, int}};
 
 % {op,{34,27}, 'orelse',
 %      {op,{34,20},'==',{var,{34,8},'HitOrEffect'},{atom,{34,23},hit}},
 %      {op,{34,46},'==',{var,{34,34},'HitOrEffect'},{atom,{34,49},effect}}}
 guard({op, _L, Op, Op1, Op2}, Matches) ->
     OpBin = atom_to_binary(Op),
-    Op1Bin = guard(Op1, Matches),
-    Op2Bin = guard(Op2, Matches),
-    <<"(", Op1Bin/binary, " ", OpBin/binary, " ", Op2Bin/binary, ")">>.
+    {Op1Bin, Type1} = guard(Op1, Matches),
+    {Op2Bin, Type2} = guard(Op2, Matches),
+    Bin = <<"(", Op1Bin/binary, " ", OpBin/binary, " ", Op2Bin/binary, ")">>,
+    {Bin, [Type1, Type2]}.
+
+maybe_type_inference(is_pid) ->
+    pid;
+maybe_type_inference(is_integer) ->
+    int;
+maybe_type_inference(is_binary) ->
+    bin;
+maybe_type_inference(is_list) ->
+    list;
+maybe_type_inference(is_atom) ->
+    atom;
+maybe_type_inference(self) ->
+    pid.
+
 
 to_bin(Int) when is_integer(Int) ->
     integer_to_binary(Int);
@@ -615,7 +761,7 @@ to_bin(Bin) when is_binary(Bin) ->
 %% This is a list of generators _or_ filters
 %% which are simply expressions
 %% A generator is a target and a source
-lc_bc_qual({generate,_Line,Target,Source}, State) ->
+lc_bc_qual({generate, _Line, Target, Source}, State) ->
     lists:foldl(fun search/2, State, [Target, Source]);
 lc_bc_qual({b_generate,_Line,Target,Source}, State) ->
     lists:foldl(fun search/2, State, [Target, Source]);
@@ -646,55 +792,83 @@ event_tuple_string([_ | Rest], Index, Parts, Matches) ->
     event_tuple_string(Rest, Index + 1, Parts2, Matches).
 
 map({var, _L, '_'}, _Matches) ->
-    <<>>;
+    {<<>>, []};
 map({map, _Lm, MapFields}, Matches) ->
-    [map_field(MapField, Matches) || MapField <- MapFields].
+    %[map_field(MapField, Matches) || MapField <- MapFields].
+    {Bins, Types, _} = lists:foldl(fun map_field/2,
+                                   {[], [], Matches},
+                                   MapFields),
+    {Bins, Types}.
 
 map_field({map_field_exact, _Lm, {atom, _La, Field}, {var, _Lv, Var}},
-          Matches) ->
+          {Bins, Types, Matches}) ->
     FieldBin = atom_to_binary(Field),
     VarBin = atom_to_binary(Var),
-    case maps:get(VarBin, Matches, undefined) of
-        undefined ->
-            <<FieldBin/binary, " == ", VarBin/binary>>;
-        Index when is_integer(Index) ->
-            IndexBin = integer_to_binary(Index),
-            <<IndexBin/binary, " == ", FieldBin/binary>>
-    end;
-map_field({map_field_exact, _Lm, {atom, _La1, Field}, {atom, _La2, Atom}}, _) ->
+    Types2 = maybe_add_type(Field, Var, Types),
+    Bin =
+        case maps:get(VarBin, Matches, undefined) of
+            undefined ->
+                <<FieldBin/binary, " == ", VarBin/binary>>;
+            Index when is_integer(Index) ->
+                IndexBin = integer_to_binary(Index),
+                <<IndexBin/binary, " == ", FieldBin/binary>>
+        end,
+    {[Bin | Bins], Types2, Matches};
+map_field({map_field_exact, _Lm, {atom, _La1, Field}, {atom, _La2, Atom}},
+          {Bins, Types, Matches}) ->
     FieldBin = atom_to_binary(Field),
     AtomBin = atom_to_binary(Atom),
-    <<FieldBin/binary, " == ", AtomBin/binary>>;
+    Bin = <<FieldBin/binary, " == ", AtomBin/binary>>,
+    {[Bin | Bins], Types, Matches};
 map_field({map_field_exact, _Lm,
            {atom, _La, Field},
            {tuple, _Lt, [{var, _Lv1, Var},
                          {var, _Lv2, '_'}]}},
-          Matches) ->
+          {Bins, Types, Matches}) ->
     FieldBin = atom_to_binary(Field),
     VarBin = atom_to_binary(Var),
-    case maps:get(VarBin, Matches, undefined) of
-        undefined ->
-            <<FieldBin/binary, " == ", VarBin/binary>>;
-        Index when is_integer(Index) ->
-            IndexBin = integer_to_binary(Index),
-            <<IndexBin/binary, " == ", FieldBin/binary>>
-    end;
+    Types2 = maybe_add_type(Field, Var, Types),
+    Bin =
+        case maps:get(VarBin, Matches, undefined) of
+            undefined ->
+                <<FieldBin/binary, " == ", VarBin/binary>>;
+            Index when is_integer(Index) ->
+                IndexBin = integer_to_binary(Index),
+                <<IndexBin/binary, " == ", FieldBin/binary>>
+        end,
+    {[Bin | Bins], Types2, Matches};
 map_field({map_field_exact, _Lm,
            {atom, _La, Field},
            {tuple, _Lt, [_,
                          _,
                          {var, _Lv3, Var},
                          _]}},
-          Matches) ->
+          {Bins, Types, Matches}) ->
     FieldBin = atom_to_binary(Field),
     VarBin = atom_to_binary(Var),
-    case maps:get(VarBin, Matches, undefined) of
-        undefined ->
-            <<FieldBin/binary, " == ", VarBin/binary>>;
-        Index when is_integer(Index) ->
-            IndexBin = integer_to_binary(Index),
-            <<IndexBin/binary, " == ", FieldBin/binary>>
-    end.
+    Types2 = maybe_add_type(Field, Var, Types),
+    Bin =
+        case maps:get(VarBin, Matches, undefined) of
+            undefined ->
+                <<FieldBin/binary, " == ", VarBin/binary>>;
+            Index when is_integer(Index) ->
+                IndexBin = integer_to_binary(Index),
+                <<IndexBin/binary, " == ", FieldBin/binary>>
+        end,
+    {[Bin | Bins], Types2, Matches}.
+
+% Matches = #{Item => 1, Owner => 2, BodyPartName => 3}
+% TypeInference = #{Owner => pid, BodyPartName => bin
+% 1,move,from,2,to,3   3 == BodyPartName
+% -> 1,move,from,2,to,3  [{3,bin}]    3 == self()
+maybe_add_type(Field, Var, Types)
+  when Field == owner;
+       Field == parent;
+       Field == character;
+       Field == body_part ->
+    [{Var, pid} | Types];
+maybe_add_type(_Field, _Var, Types) ->
+    Types.
 
 print({var, _Line, VarName}) ->
     move_leading_underscore(a2b(VarName));
