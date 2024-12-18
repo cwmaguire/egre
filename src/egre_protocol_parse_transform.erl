@@ -3,8 +3,17 @@
 
 -export([parse_transform/2]).
 
+-type type() :: atom().
+-type variable() :: binary().
+-type ast() :: tuple().
+-type var_type() :: {variable(), type()}.
+-type var_types() :: [var_type()].
+-type output() :: binary() | iolist().
+-type index() :: integer().
+-type var_indexes() :: #{variable() := index()}.
+
 parse_transform(Forms, _Options) ->
-    %io:format(user, "Forms = ~p~n", [Forms]),
+    io:format(user, "Forms = ~p~n", [Forms]),
     io:format("~~", []),
 
     Module = module(Forms),
@@ -459,10 +468,10 @@ search({'fun',_Line,Body}, State) ->
             State
     end;
 search({call, _Line,
-      {remote, _RemLine,
-       {atom, _AtomLine, egre_object},
-       {atom, _FunAtomLine, attempt}},
-      [_Target, NewEvent]},
+         {remote, _RemLine,
+           {atom, _AtomLine, egre_object},
+           {atom, _FunAtomLine, attempt}},
+         [_Target, NewEvent]},
      State) ->
     State#{new_event_arg => NewEvent};
 
@@ -644,8 +653,8 @@ derive_types(Types) ->
     ActualTypes ++ NewTypes.
 
 derive_types({Var1, Var2}, {NewTypes, ActualTypes}) ->
-    Type1s = [T || {Var, T} <- ActualTypes, Var == Var1],
-    Type2s = [T || {Var, T} <- ActualTypes, Var == Var2],
+    Type2s = [{Var2, T} || {Var, T} <- ActualTypes, Var == Var1],
+    Type1s = [{Var1, T} || {Var, T} <- ActualTypes, Var == Var2],
     {[Type1s ++ Type2s ++ NewTypes], ActualTypes}.
 
 guard_group_conjunction(Guards, Matches) ->
@@ -807,6 +816,8 @@ event_tuple_string([_ | Rest], Index, Parts, Matches) ->
     Parts2 = Parts ++ [integer_to_binary(Index)],
     event_tuple_string(Rest, Index + 1, Parts2, Matches).
 
+-spec map(ast(), var_indexes()) -> {output(), var_types()}.
+
 map({var, _L, '_'}, _Matches) ->
     {<<>>, []};
 map({map, _Lm, MapFields}, Matches) ->
@@ -815,6 +826,14 @@ map({map, _Lm, MapFields}, Matches) ->
                                    {[], [], Matches},
                                    MapFields),
     {Bins, Types}.
+
+-spec map_field(ast(),
+                {[iolist()],
+                 [{variable(), var_type()}],
+                 #{variable() := integer()}}) ->
+    {iolist(),
+     [{binary(), atom()}],
+     #{binary() := integer()}}.
 
 map_field({map_field_exact, _Lm, {atom, _La, Field}, {var, _Lv, Var}},
           {Bins, Types, Matches}) ->

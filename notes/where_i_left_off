@@ -2,6 +2,89 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2024-12-14   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+I'm trying to write a parse transform to generate "event chains" so I can
+see when events being generated and matched by disparate rules modules do
+fit into a chain: e.g. when I've modified an event in a chain such that the
+other rules modules participating in that event chain don't recognize the
+modified event and miss their cue.
+
+This is fraught with challenges:
+- in order to ignore variable names, events need to be anonimized
+  - e.g. {Item, move, to, Room} becomes {1, move, to, 2}
+  - This allows messages to match on shape, as opposed to various
+    variable names
+
+- if I don't capture the types of the variables and function calls that are
+  represented by numbers, then attempt/1 and succeed/1 functions that only
+  differentiate on type will cycle
+
+- I need to look at guard clauses and matches outside of the event to determine
+  what types are required for the attempt/1 or succeed/1 clause to match.
+  - e.g. #{owner := Owner}, {Owner, move, n}
+    I know that the Owner in the event must be a pid, because 'owner' in the
+    map always represents a pid.
+  - We won't have a type for everything variable, so we can't rely and finding
+    matching types: what we can do is avoid mis-matched types, i.e. conflicts.
+
+- in order to capture events in utility functions we have to path through
+  the utility functions to find events:
+  e.g. attempt/1 calls foo(A) ->
+           foo(B) calls bar(B) ->   (i.e. the A from the caller is now B in the args)
+               bar(C) fires event(do, C)
+  - C is actually B, which is actually A
+
+  This won't work for wrapped or unwrapped data:
+
+  e.g. attempt/1 calls foo(A) ->
+           foo(B) calls bar({X, B}) ->   (i.e. the A from the caller is now B in the args)
+               bar(C) fires event(do, C)
+  - C has a compound type of {type of X, type of A}.
+    - That is, we can trace back C to A, but we don't know what
+      X is.
+    - Hmm, we could just have that as a type: {_, type of A}, e.g.
+      {_, bin}.
+      - Nothing will conflict with _
+      - It's fairly simple to walk two data structures and check
+        for conflicts
+
+So far, this gives me the following stages
+
+- unwind functions and translate their variables
+- catalog all variable types in matches and guard clauses, even in the body
+- match numeric placeholders for event variables with their types
+- build chains of events by comparing variable-agnostic events and making
+  sure no types conflict
+
+I think I might benefit from turning the AST into something that's easier
+to work with.
+
+  For one thing, I'll get rid of all the stupid line numbers.
+  I can replace matches and types with simple type-pairs:
+  is_pid(Dog) -> {Dog, pid}
+  #{owner := Owner} -> {Owner, pid}
+  i.e. go through and replace the AST with what it means to me.
+
+  Once I've done that, I can ignore guards and matches.
+
+  Secondly, I can unwind all the functions and work all their variables
+  back to their originals. This might be very challenging if variables
+  are wrapped in new structures or unwrapped. I might start just with
+  variables that survive untouched and only renamed.
+
+When I inline functions, do I inline the AST and then translate, or
+translate and then inline?
+
+  A function is just a case statement.
+
+  I don't care about cases except for type info from guards.
+
+  I don't know if I have remote functions that generate events.
+  I suspect not.
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2024-11-28   ┃
 ┗━━━━━━━━━━━━━━━━┛
 
