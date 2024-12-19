@@ -49,11 +49,6 @@ level_1_call_no_args(Config) ->
         compile:file(DataDir ++ "/level_1_call_no_args_out.erl",
                      [{parse_transform, egre_protocol_id_transform}]),
 
-    X = compile:env_compiler_options(),
-    ct:pal("~p:~p: X~n\t~p~n", [?MODULE, ?FUNCTION_NAME, X]),
-
     {ok, FileIn} = file:read_file("level_1_call_no_args_in"),
-     ct:pal("~p:~p: FileIn~n\t~p~n", [?MODULE, ?FUNCTION_NAME, FileIn]),
     {ok, FileOut} = file:read_file("level_1_call_no_args_out"),
-     ct:pal("~p:~p: FileOut~n\t~p~n", [?MODULE, ?FUNCTION_NAME, FileOut]),
     ?assertEqual(FileIn, FileOut).

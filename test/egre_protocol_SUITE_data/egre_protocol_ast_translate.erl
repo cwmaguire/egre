@@ -8,7 +8,6 @@ parse_transform(Forms, _Options) ->
 
 translate_ast([FilenameAttribute | Forms]) ->
     FileRoot = filename(FilenameAttribute),
-    ct:pal("~p:~p: FileRoot~n\t~p~n", [?MODULE, ?FUNCTION_NAME, FileRoot]),
 
     %io:format(user, "Forms = ~p~n", [Forms]),
     AstFuns = lists:filter(fun is_fun/1, Forms),
@@ -28,9 +27,7 @@ translate_ast([FilenameAttribute | Forms]) ->
     {ok, IO} = file:open(Path ++ FileRoot, [write]),
     FormsIolist = io_lib:format("~p", [ApiFuns2]),
     file:write(IO, FormsIolist),
-    file:close(IO),
-
-    io:format(user, "ApiFuns2 = ~p~n", [ApiFuns2]).
+    file:close(IO).
 
 is_fun({function, _Line, _Name, _Arity, _Clauses}) ->
     true;
@@ -121,9 +118,15 @@ inline_api_form({call, L, {atom, _La, FunName}, CallArgs},
     %io:format(user, "BeforeCallBlocks = ~p~n", [BeforeCallBlocks]),
     %io:format(user, "Clauses2 = ~p~n", [Clauses2]),
 
-    Case = {'case', L, {tuple, L, ArgForms}, Clauses2},
+    Block =
+        case Clauses of
+            [{clause, _, [], [], Forms_}] ->
+                {block, L, Forms_};
+            _ ->
+                {'case', L, {tuple, L, ArgForms}, Clauses2}
+        end,
     FunVar = atom2var(FunName),
-    Match = {match, L, {var, L, FunVar}, Case},
+    Match = {match, L, {var, L, FunVar}, Block},
 
 
     {Forms ++ BeforeArgBlocks ++ BeforeCallBlocks ++ [Match],
@@ -234,7 +237,8 @@ filename({attribute, _, file, {Filename, _}}) ->
 path() ->
     case os:getenv("EGRE_PARSE_TRANSFORM_OUT_DIR") of
         false ->
-            "/home/c/dev/egre/";
+            {ok, CWD} = file:get_cwd(),
+            CWD;
         Path ->
             Path
     end.
