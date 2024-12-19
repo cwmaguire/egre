@@ -6,7 +6,10 @@ parse_transform(Forms, _Options) ->
     translate_ast(Forms),
     Forms.
 
-translate_ast(Forms) ->
+translate_ast([FilenameAttribute | Forms]) ->
+    FileRoot = filename(FilenameAttribute),
+    ct:pal("~p:~p: FileRoot~n\t~p~n", [?MODULE, ?FUNCTION_NAME, FileRoot]),
+
     %io:format(user, "Forms = ~p~n", [Forms]),
     AstFuns = lists:filter(fun is_fun/1, Forms),
     FunKVs = lists:map(fun fun2kv/1, AstFuns),
@@ -21,6 +24,12 @@ translate_ast(Forms) ->
                         end,
                         ApiFuns),
     ApiFuns2,
+    Path = path(),
+    {ok, IO} = file:open(Path ++ FileRoot, [write]),
+    FormsIolist = io_lib:format("~p", [ApiFuns2]),
+    file:write(IO, FormsIolist),
+    file:close(IO),
+
     io:format(user, "ApiFuns2 = ~p~n", [ApiFuns2]).
 
 is_fun({function, _Line, _Name, _Arity, _Clauses}) ->
@@ -218,3 +227,14 @@ atom2var(Atom) ->
     [First | Rest] = atom_to_list(Atom),
     [Upper] = string:uppercase([First]),
     [Upper | Rest].
+
+filename({attribute, _, file, {Filename, _}}) ->
+    filename:rootname(filename:basename(Filename)).
+
+path() ->
+    case os:getenv("EGRE_PARSE_TRANSFORM_OUT_DIR") of
+        false ->
+            "/home/c/dev/egre/";
+        Path ->
+            Path
+    end.
