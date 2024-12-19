@@ -20,3 +20,10 @@ fi
 CT_SUITES="egre_protocol" \
 CT_OPTS="${CASES} -config test/test.config " \
 make ct | tee  out
+
+for f in logs/ct_run*/level_1_call_no_args_{in,out}
+do
+  echo -e "\n$f\n"
+  cat $f
+  echo -e "\n"
+done
