@@ -11,7 +11,8 @@ translate_ast([FilenameAttribute | Forms]) ->
 
     %io:format(user, "Forms = ~p~n", [Forms]),
     AstFuns = lists:filter(fun is_fun/1, Forms),
-    FunKVs = lists:map(fun fun2kv/1, AstFuns),
+    AstFuns2 = [strip_lines(F) || F <- AstFuns],
+    FunKVs = lists:map(fun fun2kv/1, AstFuns2),
     Funs = maps:from_list(FunKVs),
     %io:format(user, "Funs = ~p~n", [maps:keys(Funs)]),
     ApiFunKVs = lists:filter(fun is_api_fun/1, FunKVs),
@@ -41,36 +42,37 @@ is_api_fun({{succeed, 1}, _}) ->
 is_api_fun(_) ->
     false.
 
-fun2kv({function, _L, Name, Arity, Clauses}) ->
+fun2kv({function, Name, Arity, Clauses}) ->
     {{Name, Arity}, Clauses}.
 
 
 inline_api_fun(_NameArity, Clauses, Funs) ->
     [inline_api_clause(C, Funs) || C <- Clauses].
 
-inline_api_clause({clause, L, Args, Guards, Forms}, Funs) ->
+inline_api_clause({clause, Args, Guards, Forms}, Funs) ->
     %io:format(user, "Forms = ~p~n", [Forms]),
 
     {Forms2, _, _, _} =
         lists:foldl(fun inline_api_form/2,
                     {[], Args, Funs, " "},
                     Forms),
-        {clause, L, Args, Guards, Forms2}.
+        {clause, Args, Guards, Forms2}.
 
 
+%% This shouldn't happen now that lines are stripped out.
 inline_api_form({L, C},
                 {Forms, Args, Funs, Indent})
   when is_integer(L),
        is_integer(C) ->
     {Forms ++ [{L, C}], Args, Funs, Indent};
-inline_api_form(Self = {call, _Lc, {atom, _La1, self}, []},
+inline_api_form(Self = {call, {atom, self}, []},
                 {Forms, Args, Funs, Indent}) ->
     %io:format("~sself()~n", [Indent]),
     {Forms ++ [Self], Args, Funs, Indent};
 
 inline_api_form(RemoteCall =
-                    {call, _Lc,
-                     {remote, _Lr, {atom, _La1, _A1}, {atom, _La2, _A2}},
+                    {call,
+                     {remote, {atom, _A1}, {atom, _A2}},
                      _CallArgs},
                 {Forms, Args, Funs, Indent}) ->
     %Arity = length(CallArgs),
@@ -82,19 +84,19 @@ inline_api_form(RemoteCall =
 %% arbitrary forms including and containing function calls. I need to do the same thing
 %% with a case statement as I do with a function call, except I don't need to update the arguments
 %% of the case statement expressions.
-inline_api_form({match, L,
+inline_api_form({match,
                  Var,
-                 {'case', Lc, LocalCall = {call, _, {atom, _, _}, _Args}, Clauses}},
+                 {'case', LocalCall = {call, _, {atom, _, _}, _Args}, Clauses}},
                 {Forms, Args, Funs, Indent}) ->
 
     {BeforeForms, FunVar, _, _} = inline_api_form(LocalCall, {Forms, undefined, Funs, Indent}),
 
-    NewCase = {'case', Lc, {var, Lc, FunVar}, Clauses},
-    NewMatch = {match, L, Var, NewCase},
+    NewCase = {'case', {var, FunVar}, Clauses},
+    NewMatch = {match, Var, NewCase},
     {Forms ++ BeforeForms ++ [NewMatch], Args, Funs, Indent};
 
 
-inline_api_form({call, L, {atom, _La, FunName}, CallArgs},
+inline_api_form({call, {atom, FunName}, CallArgs},
                 {Forms, Args, Funs, Indent}) ->
 
     {BeforeArgBlocks, ArgForms, _, _, _, _} =
@@ -121,12 +123,12 @@ inline_api_form({call, L, {atom, _La, FunName}, CallArgs},
     Block =
         case Clauses of
             [{clause, _, [], [], Forms_}] ->
-                {block, L, Forms_};
+                {block, Forms_};
             _ ->
-                {'case', L, {tuple, L, ArgForms}, Clauses2}
+                {'case', {tuple, ArgForms}, Clauses2}
         end,
     FunVar = atom2var(FunName),
-    Match = {match, L, {var, L, FunVar}, Block},
+    Match = {match, {var, FunVar}, Block},
 
 
     {Forms ++ BeforeArgBlocks ++ BeforeCallBlocks ++ [Match],
@@ -136,7 +138,7 @@ inline_api_form({call, L, {atom, _La, FunName}, CallArgs},
 
 
 inline_api_form(T, {Forms, Args, Funs, Indent}) when is_tuple(T) ->
-    E1 = element(1, T),
+    _E1 = element(1, T),
     %io:format(user, "~s{~p, ...}~n", [Indent, E1]),
 
     List = tuple_to_list(T),
@@ -146,7 +148,7 @@ inline_api_form(T, {Forms, Args, Funs, Indent}) when is_tuple(T) ->
                     List),
     Tuple = list_to_tuple(Forms2),
     {Forms ++ [Tuple], Args, Funs, Indent};
-inline_api_form(L = [H | _], {Forms, Args, Funs, Indent}) ->
+inline_api_form(L = [_H | _], {Forms, Args, Funs, Indent}) ->
     %io:format(user, "~s[~p | _]~n", [Indent, H]),
     {Forms ++ [L], Args, Funs, Indent};
 inline_api_form(Other, {Forms, Args, Funs, Indent}) ->
@@ -156,7 +158,7 @@ inline_api_form(Other, {Forms, Args, Funs, Indent}) ->
 %% TODO handle function calls in arguments: inline the calls
 %% and put them in PreForms, then replace the arg with the
 %% variable the block is assigned to
-inline_args(SimpleArg = {var, _, Atom},
+inline_args(SimpleArg = {var, Atom},
             {PreForms, Forms, NewArgs, Args, Funs, Indent})
   when is_atom(Atom) ->
     %io:format("~s SimpleArg: ~p~n", [Indent, Atom]),
@@ -166,12 +168,12 @@ inline_args(Arg,
     %io:format(user, "~sArg: ~p~n", [Indent, Arg]),
     {PreForms, Forms ++ [Arg], [], Args, Funs, Indent}.
 
-inline_fun_clause({clause, L, OldArgs, Guards, Body},
+inline_fun_clause({clause, OldArgs, Guards, Body},
                   {PreForms, ClauseForms, NewArgNames, Args, Funs, Indent}) ->
 
-    OldArgNames = [Atom || {var, _, Atom} <- OldArgs],
+    OldArgNames = [Atom || {var, Atom} <- OldArgs],
     ArgPairs = lists:zip(OldArgs, NewArgNames),
-    Args2 = [{var, Lv, New} || {{var, Lv, _Old}, New} <- ArgPairs],
+    Args2 = [{var, New} || {{var, _Old}, New} <- ArgPairs],
 
     RenamedArgMap =
         lists:foldl(fun map_arg_changes/2,
@@ -190,7 +192,7 @@ inline_fun_clause({clause, L, OldArgs, Guards, Body},
                     {[], RenamedArgMap},
                     Body),
 
-    Clause2 = {clause, L, Args2, Guards2, Body2},
+    Clause2 = {clause, Args2, Guards2, Body2},
 
     {PreForms, ClauseForms ++ [Clause2], Args, Funs, Indent}.
 
@@ -214,13 +216,13 @@ rename_form_args(Form, {Forms, ArgMap}) when is_list(Form) ->
                     {[], ArgMap},
                     Form),
     {Forms ++ Forms2, ArgMap};
-rename_form_args({var, Lv, Var}, {Forms, ArgMap}) ->
+rename_form_args({var, Var}, {Forms, ArgMap}) ->
     NewForm =
         case ArgMap of
             #{Var := NewVar} ->
-                {var, Lv, NewVar};
+                {var, NewVar};
             _ ->
-                {var, Lv, Var}
+                {var, Var}
         end,
     {Forms ++ [NewForm], ArgMap};
 rename_form_args(Form, {Forms, ArgMap}) ->
@@ -231,7 +233,7 @@ atom2var(Atom) ->
     [Upper] = string:uppercase([First]),
     [Upper | Rest].
 
-filename({attribute, _, file, {Filename, _}}) ->
+filename({attribute, _L, file, {Filename, _}}) ->
     filename:rootname(filename:basename(Filename)).
 
 path() ->
@@ -242,3 +244,21 @@ path() ->
         Path ->
             Path
     end.
+
+strip_lines({L, C}) when is_integer(L), is_integer(C) ->
+    %ct:pal("~p:~p: {~p, ~p}~n", [?MODULE, ?FUNCTION_NAME, L, C]),
+    delete_me;
+strip_lines(Form) when is_tuple(Form) ->
+    %ct:pal("~p:~p: Form~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Form]),
+    List = tuple_to_list(Form),
+    %io:format(user, "List = ~p~n", [List]),
+    Forms2 = [strip_lines(F) || F <- List],
+    Forms3 = [F || F <- Forms2, F /= delete_me],
+    list_to_tuple(Forms3);
+strip_lines(Form) when is_list(Form) ->
+    ct:pal("~p:~p: List Form~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Form]),
+    io:format("List form: ~p~n", [Form]),
+    [strip_lines(F) || F <- Form];
+strip_lines(Form) ->
+    %ct:pal("~p:~p: Form~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Form]),
+    Form.
