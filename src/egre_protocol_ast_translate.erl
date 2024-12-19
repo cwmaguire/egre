@@ -122,7 +122,7 @@ inline_api_form({call, {atom, FunName}, CallArgs},
 
     Block =
         case Clauses of
-            [{clause, _, [], [], Forms_}] ->
+            [{clause, [], [], Forms_}] ->
                 {block, Forms_};
             _ ->
                 {'case', {tuple, ArgForms}, Clauses2}
@@ -231,7 +231,7 @@ rename_form_args(Form, {Forms, ArgMap}) ->
 atom2var(Atom) ->
     [First | Rest] = atom_to_list(Atom),
     [Upper] = string:uppercase([First]),
-    [Upper | Rest].
+    list_to_atom([Upper | Rest]).
 
 filename({attribute, _L, file, {Filename, _}}) ->
     filename:rootname(filename:basename(Filename)).
@@ -246,19 +246,13 @@ path() ->
     end.
 
 strip_lines({L, C}) when is_integer(L), is_integer(C) ->
-    %ct:pal("~p:~p: {~p, ~p}~n", [?MODULE, ?FUNCTION_NAME, L, C]),
     delete_me;
 strip_lines(Form) when is_tuple(Form) ->
-    %ct:pal("~p:~p: Form~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Form]),
     List = tuple_to_list(Form),
-    %io:format(user, "List = ~p~n", [List]),
     Forms2 = [strip_lines(F) || F <- List],
     Forms3 = [F || F <- Forms2, F /= delete_me],
     list_to_tuple(Forms3);
 strip_lines(Form) when is_list(Form) ->
-    ct:pal("~p:~p: List Form~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Form]),
-    io:format("List form: ~p~n", [Form]),
     [strip_lines(F) || F <- Form];
 strip_lines(Form) ->
-    %ct:pal("~p:~p: Form~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Form]),
     Form.
