@@ -4,7 +4,7 @@
 
 attempt(_) ->
     Call_one_arg =
-        case ok of
-            ok ->
+        case {ok} of
+            {ok} ->
                 {return, ok}
         end.
