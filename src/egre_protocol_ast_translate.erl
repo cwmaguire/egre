@@ -164,7 +164,7 @@ inline_args(SimpleArg = {var, Atom},
     %io:format("~s SimpleArg: ~p~n", [Indent, Atom]),
     {PreForms, Forms ++ [SimpleArg], NewArgs, Args, Funs, Indent};
 inline_args(Arg,
-            {PreForms, Forms, Args, Funs, Indent}) ->
+            {PreForms, Forms, _, Args, Funs, Indent}) ->
     %io:format(user, "~sArg: ~p~n", [Indent, Arg]),
     {PreForms, Forms ++ [Arg], [], Args, Funs, Indent}.
 
