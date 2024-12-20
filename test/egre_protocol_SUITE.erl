@@ -61,21 +61,25 @@ compile(Module, Config) ->
 
     InPath = DataDir ++ FileIn,
     ct:pal("~p:~p: InPath~n\t~p~n", [?MODULE, ?FUNCTION_NAME, InPath]),
-    Result = compile:file(InPath, [{parse_transform, egre_protocol_ast_translate}, return]),
-    case Result of
+    Result1 = compile:file(InPath, [{parse_transform, egre_protocol_ast_translate}, return_errors]),
+    case Result1 of
         {error, Errors1, _Warnings1} ->
             ct:pal("Compile error for ~p:~n~p~n", [FileIn, Errors1]);
         {ok, ModuleIn} ->
-            ok
+            ok;
+        Other1 ->
+            ct:pal("~p:~p: Other~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Other1])
     end,
 
     OutPath = DataDir ++ "/" ++ FileOut,
-    Result = compile:file(OutPath, [{parse_transform, egre_protocol_id_transform}, return]),
-    case Result of
+    Result2 = compile:file(OutPath, [{parse_transform, egre_protocol_id_transform}, return_errors]),
+    case Result2 of
         {error, Errors2, _Warnings2} ->
             ct:pal("Compile error for ~p:~n~p~n", [FileOut, Errors2]);
         {ok, ModuleOut} ->
-            ok
+            ok;
+        Other2 ->
+            ct:pal("~p:~p: Other~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Other2])
     end,
 
     {ok, InData} = file:read_file(In),
