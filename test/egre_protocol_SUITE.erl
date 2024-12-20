@@ -42,12 +42,20 @@ end_per_testcase(_TestCase, _Config) ->
     ok.
 
 level_1_call_no_args(Config) ->
-    {ExpectedAst, ActualAst} = compile(level_1_call_no_args, Config),
-    ?assertEqual(ExpectedAst, ActualAst).
+    Test = level_1_call_no_args,
+    compare(Test, compile(Test, Config)).
 
 level_1_call_1_literal_arg(Config) ->
-    {ExpectedAst, ActualAst} = compile(level_1_call_1_literal_arg, Config),
-    ?assertEqual(ExpectedAst, ActualAst).
+    Test = level_1_call_1_literal_arg,
+    compare(Test, compile(Test, Config)).
+
+compare(_Test, {Same, Same}) ->
+    ok;
+compare(Test, {ActualAst, ExpectedAst}) ->
+    ExpectedPretty = iolist_to_binary(re:replace(ExpectedAst, <<"\n| ">>, <<"">>, [global])),
+    ActualPretty = iolist_to_binary(re:replace(ActualAst, <<"\n| ">>, <<"">>, [global])),
+    ct:pal("Expected vs Actual AST for ~p:~n~p~n~p~n", [Test, ExpectedPretty, ActualPretty]),
+    ct:fail("Mismatched AST for ~p", [Test]).
 
 compile(Module, Config) ->
     In = atom_to_list(Module) ++ "_in",
