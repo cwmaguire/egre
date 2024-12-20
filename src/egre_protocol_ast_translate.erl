@@ -173,7 +173,7 @@ inline_fun_clause({clause, OldArgs, Guards, Body},
 
     OldArgNames = [Atom || {var, Atom} <- OldArgs],
     ArgPairs = lists:zip(OldArgs, NewArgNames),
-    Args2 = [{var, New} || {{var, _Old}, New} <- ArgPairs],
+    Args2 = lists:map(fun replace_args/1, ArgPairs),
 
     RenamedArgMap =
         lists:foldl(fun map_arg_changes/2,
@@ -256,3 +256,10 @@ strip_lines(Form) when is_list(Form) ->
     [strip_lines(F) || F <- Form];
 strip_lines(Form) ->
     Form.
+
+replace_args({{var, _Old}, {var, New}}) ->
+    {var, New};
+replace_args({{var, _Old}, New}) ->
+    New;
+replace_args({Value, _New}) ->
+    Value.
