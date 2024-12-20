@@ -42,12 +42,12 @@ end_per_testcase(_TestCase, _Config) ->
     ok.
 
 level_1_call_no_args(Config) ->
-    {FileIn, FileOut} = compile(level_1_call_no_args, Config),
-    ?assertEqual(FileIn, FileOut).
+    {ExpectedAst, ActualAst} = compile(level_1_call_no_args, Config),
+    ?assertEqual(ExpectedAst, ActualAst).
 
 level_1_call_1_literal_arg(Config) ->
-    {FileIn, FileOut} = compile(level_1_call_1_literal_arg, Config),
-    ?assertEqual(FileIn, FileOut).
+    {ExpectedAst, ActualAst} = compile(level_1_call_1_literal_arg, Config),
+    ?assertEqual(ExpectedAst, ActualAst).
 
 compile(Module, Config) ->
     In = atom_to_list(Module) ++ "_in",
@@ -59,13 +59,24 @@ compile(Module, Config) ->
 
     DataDir = proplists:get_value(data_dir, Config),
 
-    InPath = DataDir ++ "/" ++ FileIn,
-    {ok, ModuleIn} =
-        compile:file(InPath, [{parse_transform, egre_protocol_ast_translate}]),
+    InPath = DataDir ++ FileIn,
+    ct:pal("~p:~p: InPath~n\t~p~n", [?MODULE, ?FUNCTION_NAME, InPath]),
+    Result = compile:file(InPath, [{parse_transform, egre_protocol_ast_translate}, return]),
+    case Result of
+        {error, Errors1, _Warnings1} ->
+            ct:pal("Compile error for ~p:~n~p~n", [FileIn, Errors1]);
+        {ok, ModuleIn} ->
+            ok
+    end,
 
     OutPath = DataDir ++ "/" ++ FileOut,
-    {ok, ModuleOut} =
-        compile:file(OutPath, [{parse_transform, egre_protocol_id_transform}]),
+    Result = compile:file(OutPath, [{parse_transform, egre_protocol_id_transform}, return]),
+    case Result of
+        {error, Errors2, _Warnings2} ->
+            ct:pal("Compile error for ~p:~n~p~n", [FileOut, Errors2]);
+        {ok, ModuleOut} ->
+            ok
+    end,
 
     {ok, InData} = file:read_file(In),
     {ok, OutData} = file:read_file(Out),
