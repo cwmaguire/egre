@@ -6,7 +6,7 @@ cp src/egre_protocol_ast_translate.erl \
    test/egre_protocol_SUITE_data/
 
 # run only cases specific on the command line, if any
-if [ -n $1 ]
+if [[ -n "$1" ]]
 then
   CASES="-case $*"
   echo "Running with ${CASES}"
@@ -21,7 +21,7 @@ CT_SUITES="egre_protocol" \
 CT_OPTS="${CASES} -config test/test.config " \
 make ct | tee  out
 
-for f in logs/ct_run*/level_1_call_no_args_{in,out}
+for f in logs/ct_run*/*{in,out}
 do
   echo -e "\n$f\n"
   cat $f
