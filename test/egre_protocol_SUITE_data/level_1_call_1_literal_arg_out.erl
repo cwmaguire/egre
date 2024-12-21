@@ -5,6 +5,6 @@
 attempt(_) ->
     Call_one_arg =
         case {ok} of
-            {ok} ->
-                {return, ok}
+            {Var} ->
+                {return, Var}
         end.

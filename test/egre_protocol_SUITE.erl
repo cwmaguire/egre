@@ -12,10 +12,12 @@
 
 -export([level_1_call_no_args/1]).
 -export([level_1_call_1_literal_arg/1]).
+-export([level_1_call_1_var_arg/1]).
 
 all() ->
     [level_1_call_no_args,
-     level_1_call_1_literal_arg].
+     level_1_call_1_literal_arg,
+     level_1_call_1_var_arg].
 
 init_per_suite(Config) ->
 
@@ -48,6 +50,10 @@ level_1_call_no_args(Config) ->
 level_1_call_1_literal_arg(Config) ->
     %egre_dbg:add(egre_protocol_ast_translate, rename_form_args),
     Test = level_1_call_1_literal_arg,
+    compare(Test, compile(Test, Config)).
+
+level_1_call_1_var_arg(Config) ->
+    Test = level_1_call_1_var_arg,
     compare(Test, compile(Test, Config)).
 
 compare(_Test, {Same, Same}) ->
