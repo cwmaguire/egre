@@ -187,12 +187,12 @@ inline_fun_clause({clause, OldArgs, Guards, Body},
     %io:format(user, "Guards = ~p~n", [Guards]),
     %io:format(user, "Guards2 = ~p~n", [Guards2]),
 
-    Body2 =
+    {Body2, _} =
         lists:foldl(fun rename_form_args/2,
                     {[], RenamedArgMap},
                     Body),
 
-    Clause2 = {clause, Args2, Guards2, Body2},
+    Clause2 = {clause, [{tuple, Args2}], Guards2, Body2},
 
     {PreForms, ClauseForms ++ [Clause2], Args, Funs, Indent}.
 
@@ -201,6 +201,17 @@ map_arg_changes({Arg, Arg}, Map) ->
 map_arg_changes({OldArg, NewArg}, Map) ->
     Map#{OldArg => NewArg}.
 
+rename_form_args({var, Var}, {Forms, ArgMap}) ->
+    NewForm =
+        case ArgMap of
+            #{Var := {var, NewVar}} ->
+                {var, NewVar};
+            #{Var := Value} ->
+                Value;
+            _ ->
+                {var, Var}
+        end,
+    {Forms ++ [NewForm], ArgMap};
 rename_form_args(Form, {Forms, ArgMap}) when is_tuple(Form) ->
     List = tuple_to_list(Form),
     %io:format(user, "List = ~p~n", [List]),
@@ -215,16 +226,7 @@ rename_form_args(Form, {Forms, ArgMap}) when is_list(Form) ->
         lists:foldl(fun rename_form_args/2,
                     {[], ArgMap},
                     Form),
-    {Forms ++ Forms2, ArgMap};
-rename_form_args({var, Var}, {Forms, ArgMap}) ->
-    NewForm =
-        case ArgMap of
-            #{Var := NewVar} ->
-                {var, NewVar};
-            _ ->
-                {var, Var}
-        end,
-    {Forms ++ [NewForm], ArgMap};
+    {Forms ++ [Forms2], ArgMap};
 rename_form_args(Form, {Forms, ArgMap}) ->
     {Forms ++ [Form], ArgMap}.
 

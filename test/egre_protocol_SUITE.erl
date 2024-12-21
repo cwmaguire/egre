@@ -46,6 +46,7 @@ level_1_call_no_args(Config) ->
     compare(Test, compile(Test, Config)).
 
 level_1_call_1_literal_arg(Config) ->
+    %egre_dbg:add(egre_protocol_ast_translate, rename_form_args),
     Test = level_1_call_1_literal_arg,
     compare(Test, compile(Test, Config)).
 
