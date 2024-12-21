@@ -69,7 +69,6 @@ compile(Module, Config) ->
     DataDir = proplists:get_value(data_dir, Config),
 
     InPath = DataDir ++ FileIn,
-    ct:pal("~p:~p: InPath~n\t~p~n", [?MODULE, ?FUNCTION_NAME, InPath]),
     Result1 = compile:file(InPath, [{parse_transform, egre_protocol_ast_translate}, return_errors]),
     case Result1 of
         {error, Errors1, _Warnings1} ->
