@@ -13,11 +13,13 @@
 -export([level_1_call_no_args/1]).
 -export([level_1_call_1_literal_arg/1]).
 -export([level_1_call_1_var_arg/1]).
+-export([level_2_call_no_args/1]).
 
 all() ->
     [level_1_call_no_args,
      level_1_call_1_literal_arg,
-     level_1_call_1_var_arg].
+     level_1_call_1_var_arg,
+     level_2_call_no_args].
 
 init_per_suite(Config) ->
 
@@ -54,6 +56,10 @@ level_1_call_1_literal_arg(Config) ->
 
 level_1_call_1_var_arg(Config) ->
     Test = level_1_call_1_var_arg,
+    compare(Test, compile(Test, Config)).
+
+level_2_call_no_args(Config) ->
+    Test = level_2_call_no_args,
     compare(Test, compile(Test, Config)).
 
 compare(_Test, {Same, Same}) ->
