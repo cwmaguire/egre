@@ -3,10 +3,10 @@
 -export([attempt/1]).
 
 attempt(_) ->
-    Call_1_no_args =
-        begin
-            Call_2_no_args =
-                begin
+    case {} of
+        {} ->
+            case {} of
+                {} ->
                     {return, ok}
-                end
-        end.
+            end
+    end.

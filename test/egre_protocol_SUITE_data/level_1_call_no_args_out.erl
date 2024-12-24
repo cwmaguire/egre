@@ -3,7 +3,7 @@
 -export([attempt/1]).
 
 attempt(_) ->
-    Call_no_args =
-        begin
-            ok
-        end.
+    case {} of
+        {} ->
+           ok
+    end.

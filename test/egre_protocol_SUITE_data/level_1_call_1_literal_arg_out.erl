@@ -3,8 +3,7 @@
 -export([attempt/1]).
 
 attempt(_) ->
-    Call_one_arg =
-        case {ok} of
-            {Var} ->
-                {return, Var}
-        end.
+    case {ok} of
+        {Var} ->
+            {return, Var}
+    end.

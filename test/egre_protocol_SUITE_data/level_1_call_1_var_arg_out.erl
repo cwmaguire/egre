@@ -4,8 +4,7 @@
 
 attempt(_) ->
     A = 1,
-    Call_one_arg =
-        case {A} of
-            {Var} ->
-                {return, Var}
-        end.
+    case {A} of
+        {Var} ->
+            {return, Var}
+    end.

@@ -50,203 +50,43 @@ inline_api_fun(_NameArity, Clauses, Funs) ->
     [inline_api_clause(C, Funs) || C <- Clauses].
 
 inline_api_clause({clause, Args, Guards, Forms}, Funs) ->
-    %io:format(user, "Forms = ~p~n", [Forms]),
 
-    {Forms2, _, _, _} =
-        lists:foldl(fun inline_api_form/2,
-                    {[], Args, Funs, " "},
+    {Forms2, _Funs} =
+        lists:foldl(fun inline_form/2,
+                    {[], Funs},
                     Forms),
         {clause, Args, Guards, Forms2}.
 
 
-%% This shouldn't happen now that lines are stripped out.
-inline_api_form({L, C},
-                {Forms, Args, Funs, Indent})
-  when is_integer(L),
-       is_integer(C) ->
-    {Forms ++ [{L, C}], Args, Funs, Indent};
-inline_api_form(Self = {call, {atom, self}, []},
-                {Forms, Args, Funs, Indent}) ->
-    %io:format("~sself()~n", [Indent]),
-    {Forms ++ [Self], Args, Funs, Indent};
+inline_form({call, {atom, FunName}, CallArgs},
+            {Forms, Funs}) ->
 
-inline_api_form(RemoteCall =
-                    {call,
-                     {remote, {atom, _A1}, {atom, _A2}},
-                     _CallArgs},
-                {Forms, Args, Funs, Indent}) ->
-    %Arity = length(CallArgs),
-    %io:format("~s~p:~p/~p(~p)~n", [Indent, A1, A2, Arity, CallArgs]),
-
-    {Forms ++ [RemoteCall], Args, Funs, Indent};
-
-%% TODO case statements are basically function calls and their expressions can contain
-%% arbitrary forms including and containing function calls. I need to do the same thing
-%% with a case statement as I do with a function call, except I don't need to update the arguments
-%% of the case statement expressions.
-inline_api_form({match,
-                 Var,
-                 {'case', LocalCall = {call, _, {atom, _, _}, _Args}, Clauses}},
-                {Forms, Args, Funs, Indent}) ->
-
-    {BeforeForms, FunVar, _, _} = inline_api_form(LocalCall, {Forms, undefined, Funs, Indent}),
-
-    NewCase = {'case', {var, FunVar}, Clauses},
-    NewMatch = {match, Var, NewCase},
-    {Forms ++ BeforeForms ++ [NewMatch], Args, Funs, Indent};
-
-
-inline_api_form({call, {atom, FunName}, CallArgs},
-                {Forms, Args, Funs, Indent}) ->
-
-    {BeforeArgBlocks, ArgForms, _, _, _, _} =
-        lists:foldl(fun inline_args/2,
-                    {_BeforeArgBlocks = [], _ArgForms = [], _NewArgs = [], Args, Funs, Indent},
+    {ArgForms, _Funs} =
+        lists:foldl(fun inline_form/2,
+                    {[], Funs},
                     CallArgs),
 
-    %io:format(user, "BeforeArgBlocks = ~p~n", [BeforeArgBlocks]),
-    %io:format(user, "ArgForms = ~p~n", [ArgForms]),
-
     Arity = length(CallArgs),
-    %io:format("~sGetting fun for ~p/~p~n", [Indent, FunName, Arity]),
-
     Clauses = maps:get({FunName, Arity}, Funs),
-
-    {BeforeCallBlocks, Clauses2, _, _, _} =
-        lists:foldl(fun inline_fun_clause/2,
-                    {[], [], ArgForms, Args, Funs, Indent},
+    {Clauses2, _Funs2} =
+        lists:foldl(fun inline_clause/2,
+                    {[], Funs},
                     Clauses),
 
-    %io:format(user, "BeforeCallBlocks = ~p~n", [BeforeCallBlocks]),
-    %io:format(user, "Clauses2 = ~p~n", [Clauses2]),
+    Case = {'case', {tuple, ArgForms}, Clauses2},
+    {Forms ++ [Case], Funs};
+inline_form(Form, {Forms, Funs}) ->
+    {Forms ++ [Form], Funs}.
 
-    Block =
-        case Clauses of
-            [{clause, [], [], Forms_}] ->
-                {block, Forms_};
-            _ ->
-                {'case', {tuple, ArgForms}, Clauses2}
-        end,
-    FunVar = atom2var(FunName),
-    Match = {match, {var, FunVar}, Block},
-
-
-    {Forms ++ BeforeArgBlocks ++ BeforeCallBlocks ++ [Match],
-     FunVar,
-     Funs,
-     Indent};
-
-% attempt(_) ->              attempt(_) ->
-%     A = 1,                     A = 1,
-%     B = 2,                     B = 2,
-%     f1(A, f2(B)).              F2 = case {B} of {W} -> W + 1 end,
-%                                F3 = case {X + Y} of {Z} -> Z * 2 end,
-% f1(X, Y) ->                    F1 = case {A, F2} of {X, Y} -> X + Y end.
-%     f3(X + Y).
-%
-% f3(Z) ->
-%     Z * 2.
-%
-% f2(W) ->
-%     W + 1.
-
-inline_api_form(T, {Forms, Args, Funs, Indent}) when is_tuple(T) ->
-    _E1 = element(1, T),
-    %io:format(user, "~s{~p, ...}~n", [Indent, E1]),
-
-    List = tuple_to_list(T),
-    {Forms2, _, _, _} =
-        lists:foldl(fun inline_api_form/2,
-                    {[], Args, Funs, Indent ++ "    "},
-                    List),
-    Tuple = list_to_tuple(Forms2),
-    {Forms ++ [Tuple], Args, Funs, Indent};
-inline_api_form(L = [_H | _], {Forms, Args, Funs, Indent}) ->
-    %io:format(user, "~s[~p | _]~n", [Indent, H]),
-    {Forms ++ [L], Args, Funs, Indent};
-inline_api_form(Other, {Forms, Args, Funs, Indent}) ->
-    %io:format(user, "~s|~p~n", [Indent, Other]),
-    {Forms ++ [Other], Args, Funs, Indent}.
-
-%% TODO handle function calls in arguments: inline the calls
-%% and put them in PreForms, then replace the arg with the
-%% variable the block is assigned to
-inline_args(SimpleArg = {var, Atom},
-            {PreForms, Forms, NewArgs, Args, Funs, Indent})
-  when is_atom(Atom) ->
-    %io:format("~s SimpleArg: ~p~n", [Indent, Atom]),
-    {PreForms, Forms ++ [SimpleArg], NewArgs, Args, Funs, Indent};
-inline_args(Arg,
-            {PreForms, Forms, _, Args, Funs, Indent}) ->
-    %io:format(user, "~sArg: ~p~n", [Indent, Arg]),
-    {PreForms, Forms ++ [Arg], [], Args, Funs, Indent}.
-
-inline_fun_clause({clause, OldArgs, Guards, Body},
-                  {PreForms, ClauseForms, _NewArgNames, Args, Funs, Indent}) ->
-
-    %OldArgNames = [Atom || {var, Atom} <- OldArgs],
-    %ArgPairs = lists:zip(OldArgs, NewArgNames),
-    %Args2 = lists:map(fun replace_args/1, ArgPairs),
-
-    %RenamedArgMap =
-        %lists:foldl(fun map_arg_changes/2,
-                    %#{},
-                    %lists:zip(OldArgNames, NewArgNames)),
-
-    %{Guards2, _} =
-        %lists:foldl(fun rename_form_args/2,
-                    %{[], RenamedArgMap},
-                    %Guards),
-    %io:format(user, "Guards = ~p~n", [Guards]),
-    %io:format(user, "Guards2 = ~p~n", [Guards2]),
-
-    {Body2, _} =
-        lists:foldl(fun rename_form_args/2,
-                    {[], _RenamedArgMap = ok},
+inline_clause({clause, Args, Guards, Body},
+              {Forms, Funs}) ->
+    Args2 = [{tuple, Args}],
+    {Body2, _Funs} =
+        lists:foldl(fun inline_form/2,
+                    {[], Funs},
                     Body),
-
-    Clause2 = {clause, [{tuple, OldArgs}], Guards, Body2},
-
-    {PreForms, ClauseForms ++ [Clause2], Args, Funs, Indent}.
-
-map_arg_changes({Arg, Arg}, Map) ->
-    Map;
-map_arg_changes({OldArg, NewArg}, Map) ->
-    Map#{OldArg => NewArg}.
-
-%rename_form_args({var, Var}, {Forms, ArgMap}) ->
-%    NewForm =
-%        case ArgMap of
-%            #{Var := {var, NewVar}} ->
-%                {var, NewVar};
-%            #{Var := Value} ->
-%                Value;
-%            _ ->
-%                {var, Var}
-%        end,
-%    {Forms ++ [NewForm], ArgMap};
-rename_form_args(Form, {Forms, ArgMap}) when is_tuple(Form) ->
-    List = tuple_to_list(Form),
-    %io:format(user, "List = ~p~n", [List]),
-    {Forms2, _ArgMap} =
-        lists:foldl(fun rename_form_args/2,
-                    {[], ArgMap},
-                    List),
-    Tuple = list_to_tuple(Forms2),
-    {Forms ++ [Tuple], ArgMap};
-rename_form_args(Form, {Forms, ArgMap}) when is_list(Form) ->
-    {Forms2, _ArgMap} =
-        lists:foldl(fun rename_form_args/2,
-                    {[], ArgMap},
-                    Form),
-    {Forms ++ [Forms2], ArgMap};
-rename_form_args(Form, {Forms, ArgMap}) ->
-    {Forms ++ [Form], ArgMap}.
-
-atom2var(Atom) ->
-    [First | Rest] = atom_to_list(Atom),
-    [Upper] = string:uppercase([First]),
-    list_to_atom([Upper | Rest]).
+    Clause = {clause, Args2, Guards, Body2},
+    {Forms ++ [Clause], Funs}.
 
 filename({attribute, _L, file, {Filename, _}}) ->
     filename:rootname(filename:basename(Filename)).
@@ -271,10 +111,3 @@ strip_lines(Form) when is_list(Form) ->
     [strip_lines(F) || F <- Form];
 strip_lines(Form) ->
     Form.
-
-replace_args({{var, Old}, {var, _New}}) ->
-    {var, Old};
-replace_args({{var, _Old}, New}) ->
-    New;
-replace_args({Value, _New}) ->
-    Value.

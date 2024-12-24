@@ -24,6 +24,7 @@ f1(Y) ->        ░
     Y + 1.      ░
 
 %% I don't actually need to store the case in a variable, I can use it right in the structure
+%% Oh, nvmd, I need to have match case for guards
 
 attempt(_) ->   ░  attempt(_) ->
     X = 1,      ░      X = 1,
