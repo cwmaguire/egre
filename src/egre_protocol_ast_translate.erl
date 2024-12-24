@@ -136,6 +136,19 @@ inline_api_form({call, {atom, FunName}, CallArgs},
      Funs,
      Indent};
 
+% attempt(_) ->              attempt(_) ->
+%     A = 1,                     A = 1,
+%     B = 2,                     B = 2,
+%     f1(A, f2(B)).              F2 = case {B} of {W} -> W + 1 end,
+%                                F3 = case {X + Y} of {Z} -> Z * 2 end,
+% f1(X, Y) ->                    F1 = case {A, F2} of {X, Y} -> X + Y end.
+%     f3(X + Y).
+%
+% f3(Z) ->
+%     Z * 2.
+%
+% f2(W) ->
+%     W + 1.
 
 inline_api_form(T, {Forms, Args, Funs, Indent}) when is_tuple(T) ->
     _E1 = element(1, T),
