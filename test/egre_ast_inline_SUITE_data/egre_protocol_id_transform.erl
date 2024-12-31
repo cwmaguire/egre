@@ -4,10 +4,11 @@
 
 parse_transform([FilenameAttribute | Forms], _Options) ->
     Filename = filename(FilenameAttribute),
+    Module = module(Forms),
 
     Forms2 = [strip_lines(F) || F <- Forms],
     ApiFuns = lists:filter(fun is_api_fun/1, Forms2),
-    Map = maps:from_list([fun2kv(F) || F <- ApiFuns]),
+    Map = maps:from_list([fun2kv(Module, F) || F <- ApiFuns]),
 
     Path = path(),
     {ok, IO} = file:open(Path ++ Filename, [write]),
@@ -35,8 +36,9 @@ is_api_fun({function, succeed, _, _}) ->
 is_api_fun(_) ->
     false.
 
-fun2kv({function, Name, Arity, Clauses}) ->
-    {{Name, Arity}, Clauses}.
+fun2kv(Module, {function, Name, Arity, Clauses}) ->
+    InputModule = binary:replace(Module, <<"_out">>, <<"_in">>),
+    {{InputModule, Name, Arity}, Clauses}.
 
 strip_lines({L, C}) when is_integer(L), is_integer(C) ->
     %ct:pal("~p:~p: {~p, ~p}~n", [?MODULE, ?FUNCTION_NAME, L, C]),
@@ -55,3 +57,18 @@ strip_lines(Form) when is_list(Form) ->
 strip_lines(Form) ->
     %ct:pal("~p:~p: Form~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Form]),
     Form.
+
+module([{attribute, _Line, module, Module} | _]) ->
+    remove_prefix(<<"rules_">>, atom_to_binary(Module));
+module([_ | Forms]) ->
+    module(Forms);
+module(_) ->
+    <<"unknown">>.
+
+remove_prefix(Prefix, Bin) ->
+    case Bin of
+        <<Prefix:(size(Prefix))/binary, Rest/binary>> ->
+            Rest;
+        Bin_ when Bin_ == Bin ->
+            Bin
+    end.
