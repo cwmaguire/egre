@@ -28,5 +28,5 @@ all() ->
                     [{tuple,[{atom,return},{atom,ok}]}]}]}]}]}]}]}]).
 
 no_events(_Config) ->
-    Events = egre_parse_transform_event_chains:get_events(?NO_EVENTS),
+    Events = egre_protocol_event_chains:get_events(?NO_EVENTS),
     ?assertEqual([], Events).

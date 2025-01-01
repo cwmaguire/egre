@@ -4,7 +4,7 @@
 
 parse_transform(Forms, _Options) ->
     InlinedApiFunctions = translate_ast(Forms),
-    egre_parse_transform_event_chains:extract(InlinedApiFunctions),
+    egre_protocol_event_chains:extract(InlinedApiFunctions),
     Forms.
 
 translate_ast([FilenameAttribute | Forms]) ->

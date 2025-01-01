@@ -29,8 +29,8 @@ init_per_suite(Config) ->
 
     DataDir = proplists:get_value(data_dir, Config),
     %% CWD is the logs/ct_run... dir
-    {ok, egre_protocol_ast_translate} =
-        compile:file(DataDir ++ "/egre_protocol_ast_translate.erl"),
+    {ok, egre_protocol_parse_transform} =
+        compile:file(DataDir ++ "/egre_protocol_parse_transform.erl"),
 
     {ok, egre_protocol_id_transform} =
         compile:file(DataDir ++ "/egre_protocol_id_transform.erl"),
@@ -93,10 +93,10 @@ compile(Module, Config) ->
     DataDir = proplists:get_value(data_dir, Config),
 
     InPath = DataDir ++ FileIn,
-    Result1 = compile:file(InPath, [{parse_transform, egre_protocol_ast_translate}, return_errors]),
+    Result1 = compile:file(InPath, [{parse_transform, egre_protocol_parse_transform}, return_errors]),
     case Result1 of
         {error, Errors1, _Warnings1} ->
-            ct:pal("Compile error for ~p:~n~p~n", [FileIn, Errors1]);
+            ct:fail("Compile error for ~p:~n~p~n", [FileIn, Errors1]);
         {ok, ModuleIn} ->
             ok;
         Other1 ->
@@ -107,7 +107,7 @@ compile(Module, Config) ->
     Result2 = compile:file(OutPath, [{parse_transform, egre_protocol_id_transform}, return_errors]),
     case Result2 of
         {error, Errors2, _Warnings2} ->
-            ct:pal("Compile error for ~p:~n~p~n", [FileOut, Errors2]);
+            ct:fail("Compile error for ~p:~n~p~n", [FileOut, Errors2]);
         {ok, ModuleOut} ->
             ok;
         Other2 ->

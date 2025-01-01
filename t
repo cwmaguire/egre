@@ -2,6 +2,8 @@
 
 rm -rf logs/
 
+rm test/level_*.beam
+
 cp src/egre_protocol_parse_transform.erl \
    test/egre_protocol_parse_transform_SUITE_data/
 
