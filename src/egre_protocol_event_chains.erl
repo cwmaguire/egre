@@ -1,4 +1,4 @@
--module(egre_parse_transform_event_chains).
+-module(egre_protocol_event_chains).
 
 -export([extract/1]).
 -export([get_events/1]).
