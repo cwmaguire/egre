@@ -2,7 +2,7 @@
 
 rm -rf logs/
 
-cp src/egre_protocol_ast_translate.erl \
+cp src/egre_protocol_parse_transform.erl \
    test/egre_ast_inline_SUITE_data/
 
 # run only cases specific on the command line, if any
@@ -17,7 +17,7 @@ fi
 # See erlang.mk
 # Search for "CT_SUITES"
 # erlang.mk automatically adds _SUITE to the filename
-CT_SUITES="egre_ast_inline egre_event_parsing" \
+CT_SUITES="egre_protocol_parse_transform egre_protocol_event_parsing" \
 CT_OPTS="${CASES} -config test/test.config " \
 make ct | tee  out
 
