@@ -1,4 +1,4 @@
--module(egre_protocol_ast_translate).
+-module(egre_protocol_parse_transform).
 
 -export([parse_transform/2]).
 

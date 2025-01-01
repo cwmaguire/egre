@@ -1,5 +1,5 @@
 %% Copyright 2024, Chris Maguire <cwmaguire@protonmail.com>
--module(egre_event_parsing_SUITE).
+-module(egre_protocol_event_parsing_SUITE).
 
 -include_lib("eunit/include/eunit.hrl").
 

@@ -3,7 +3,7 @@
 rm -rf logs/
 
 cp src/egre_protocol_parse_transform.erl \
-   test/egre_ast_inline_SUITE_data/
+   test/egre_protocol_parse_transform_SUITE_data/
 
 # run only cases specific on the command line, if any
 if [[ -n "$1" ]]

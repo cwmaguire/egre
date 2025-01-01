@@ -1,5 +1,5 @@
 %% Copyright 2022, Chris Maguire <cwmaguire@protonmail.com>
--module(egre_protocol_parse_transform).
+-module(egre_protocol_parse_transform_old).
 
 -export([parse_transform/2]).
 
