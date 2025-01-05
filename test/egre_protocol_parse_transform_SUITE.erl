@@ -16,6 +16,8 @@
 -export([level_2_call_no_args/1]).
 -export([level_2_call_2_var_args/1]).
 -export([level_2_call_1_fun_arg/1]).
+-export([level_2_call_with_lc/1]).
+-export([level_2_call_recursive/1]).
 
 all() ->
     [level_1_call_no_args,
@@ -23,7 +25,9 @@ all() ->
      level_1_call_1_var_arg,
      level_2_call_no_args,
      level_2_call_2_var_args,
-     level_2_call_1_fun_arg].
+     level_2_call_1_fun_arg,
+     level_2_call_with_lc,
+     level_2_call_recursive].
 
 init_per_suite(Config) ->
 
@@ -72,6 +76,14 @@ level_2_call_2_var_args(Config) ->
 
 level_2_call_1_fun_arg(Config) ->
     Test = level_2_call_1_fun_arg,
+    compare(Test, compile(Test, Config)).
+
+level_2_call_with_lc(Config) ->
+    Test = level_2_call_with_lc,
+    compare(Test, compile(Test, Config)).
+
+level_2_call_recursive(Config) ->
+    Test = level_2_call_recursive,
     compare(Test, compile(Test, Config)).
 
 compare(_Test, {Same, Same}) ->

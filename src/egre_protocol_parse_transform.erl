@@ -54,42 +54,72 @@ inline_api_fun({Module, _, _}, Clauses, Funs) ->
 
 inline_api_clause(Module, {clause, Args, Guards, Forms}, Funs) ->
 
-    {Module, Forms2, _Funs} =
+    {Module, Forms2, _Funs, _} =
         lists:foldl(fun inline_form/2,
-                    {Module, [], Funs},
+                    {Module, [], Funs, []},
                     Forms),
         {clause, Args, Guards, Forms2}.
 
+inline_form(Form = {call, {atom, FunName}, CallArgs},
+            {Module, Forms, Funs, InlinedFuns}) ->
 
-inline_form({call, {atom, FunName}, CallArgs},
-            {Module, Forms, Funs}) ->
+    case lists:member(FunName, InlinedFuns) of
+        false ->
+            InlinedFuns2 = [FunName | InlinedFuns],
 
-    {Module, ArgForms, _Funs} =
-        lists:foldl(fun inline_form/2,
-                    {Module, [], Funs},
-                    CallArgs),
+            {Module, ArgForms, _Funs, InlinedFuns3} =
+                lists:foldl(fun inline_form/2,
+                            {Module, [], Funs, InlinedFuns2},
+                            CallArgs),
 
-    Arity = length(CallArgs),
-    Clauses = maps:get({Module, FunName, Arity}, Funs),
-    {Module, Clauses2, _Funs2} =
-        lists:foldl(fun inline_clause/2,
-                    {Module, [], Funs},
-                    Clauses),
+            Arity = length(CallArgs),
+            Clauses = maps:get({Module, FunName, Arity}, Funs),
+            {Module, Clauses2, _Funs2, InlinedFuns4} =
+                lists:foldl(fun inline_clause/2,
+                            {Module, [], Funs, InlinedFuns3},
+                            Clauses),
 
-    Case = {'case', {tuple, ArgForms}, Clauses2},
-    {Module, Forms ++ [Case], Funs};
-inline_form(Form, {Module, Forms, Funs}) ->
-    {Module, Forms ++ [Form], Funs}.
+            Case = {'case', {tuple, ArgForms}, Clauses2},
+            {Module, Forms ++ [Case], Funs, InlinedFuns4};
+        true ->
+            {Module, Forms ++ [Form], Funs, InlinedFuns}
+    end;
+
+inline_form(LCForm = {lc, Body, Generators},
+            {Module, Forms, Funs, InlinedFuns}) ->
+    io:format(user, "LC Form = ~p~n", [LCForm]),
+    {Module, [BodyForm], _, InlinedFuns2} =
+        inline_form(Body, {Module, [], Funs, InlinedFuns}),
+
+    {Module, GeneratorForms, _, InlinedFuns3} =
+        lists:foldl(fun inline_lc_generator/2,
+                    {Module, [], Funs, InlinedFuns2},
+                    Generators),
+
+    LC = {lc, BodyForm, GeneratorForms},
+    {Module, Forms ++ [LC], Funs, InlinedFuns3};
+
+inline_form(Form, {Module, Forms, Funs, InlinedFuns}) ->
+    io:format(user, "Form = ~p~n", [Form]),
+    timer:sleep(20),
+    {Module, Forms ++ [Form], Funs, InlinedFuns}.
+
+inline_lc_generator({generate, Bindings, Expression},
+                    {Module, Forms, Funs, InlinedFuns}) ->
+    {Module, [Expression2], _Funs, InlinedFuns2} =
+        inline_form(Expression, {Module, [], Funs, InlinedFuns}),
+    Generator = {generate, Bindings, Expression2},
+    {Module, Forms ++ [Generator], Funs, InlinedFuns2}.
 
 inline_clause({clause, Args, Guards, Body},
-              {Module, Forms, Funs}) ->
+              {Module, Forms, Funs, InlinedFuns}) ->
     Args2 = [{tuple, Args}],
-    {Module, Body2, _Funs} =
+    {Module, Body2, _Funs, InlinedFuns2} =
         lists:foldl(fun inline_form/2,
-                    {Module, [], Funs},
+                    {Module, [], Funs, InlinedFuns},
                     Body),
     Clause = {clause, Args2, Guards, Body2},
-    {Module, Forms ++ [Clause], Funs}.
+    {Module, Forms ++ [Clause], Funs, InlinedFuns2}.
 
 filename({attribute, _L, file, {Filename, _}}) ->
     filename:rootname(filename:basename(Filename)).
