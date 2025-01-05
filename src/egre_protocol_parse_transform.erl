@@ -27,7 +27,7 @@ translate_ast([FilenameAttribute | Forms]) ->
                            ApiFuns),
     InlinedFuns,
     Path = path(),
-    {ok, IO} = file:open(Path ++ FileRoot, [write]),
+    {ok, IO} = file:open(Path ++ "/" ++ FileRoot, [write]),
     FormsIolist = io_lib:format("~p", [InlinedFuns]),
     file:write(IO, FormsIolist),
     file:close(IO),
