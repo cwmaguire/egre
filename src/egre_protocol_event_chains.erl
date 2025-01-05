@@ -4,22 +4,8 @@
 -export([get_events/1]).
 -export([write_events/1]).
 
--define(NO_EVENTS,
-        [{{module_1, attempt, 1},
-          [{clause,
-            [{var,'_'}],
-            [],
-            [{'case',
-              {tuple,[]},
-              [{clause,
-                [{tuple,[]}],
-                [],
-                [{'case',
-                  {tuple,[]},
-                  [{clause,
-                    [{tuple,[]}],
-                    [],
-                    [{tuple,[{atom,return},{atom,ok}]}]}]}]}]}]}]}]).
+-define(API_FUNCTION_ARITY, 1).
+
 
 extract(ApiFuns) ->
   Events = get_events(ApiFuns),
@@ -38,5 +24,20 @@ flatten_clauses({K, Clauses}, ModuleClauses) ->
 
 get_event({_K, {clause, [{var, '_'}], _, _}}) ->
     false;
-get_event({{_Module, _Function, _Arity}, {clause, _Bindings, _Guards, _Body}}) ->
-    {true, ok}.
+get_event({{Module, Function, ?API_FUNCTION_ARITY}, {clause, Arguments, _Guards, _Body}}) ->
+    [{tuple, [_CustomData, _Props, Event, _Context]}] = Arguments,
+    {IndexedEvent, IndexedVariables} = indexed_event(Event),
+    {true, [Module, Function, IndexedEvent, _TypeInf = [], IndexedVariables, undefined, undefined, undefined]};
+get_event({{_Module, _Function, _}, {clause, _Bindings, _Guards, _Body}}) ->
+    false.
+
+indexed_event({tuple, Event}) ->
+    {_, IndexedEvent, IndexedVariables} =
+        lists:foldl(fun a/2, {1, [], []}, Event),
+    IndexedEventTuple = list_to_tuple(IndexedEvent),
+    {IndexedEventTuple, IndexedVariables}.
+
+a({var, Var}, {Index, Event, IndexedVariables}) ->
+    {Index + 1, Event ++ [Index], IndexedVariables ++ [{Index, atom_to_binary(Var)}]};
+a({atom, Atom}, {Index, Event, IndexedVariables}) ->
+    {Index, Event ++ [Atom], IndexedVariables}.
