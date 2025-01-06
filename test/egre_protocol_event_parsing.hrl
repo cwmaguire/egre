@@ -1,5 +1,5 @@
 -define(NO_EVENTS,
-        [{{module_1, attempt, 1},
+        [{{<<"module_1">>, attempt, 1},
           [{clause,
             [{var,'_'}],
             [],
@@ -31,7 +31,7 @@
             [],
             []}]}]).
 
--define(NON_TERMINAL_EVENT,
+-define(ACTION_REACTION,
         [{{<<"attack_resource">>,attempt,1},
           [{clause,
             [{tuple,
@@ -45,7 +45,15 @@
                  {var,'Owner'}]},
                {var,'_Context'}]}],
             [],
-            []}]}]).
+            [{call,
+              {remote,{atom,egre_object},{atom,attempt}},
+              [{call,{atom,self},[]},
+               {tuple,
+                [{var,'Character'},
+                 {atom,unreserve},
+                 {var,'Resource'},
+                 {atom,for},
+                 {var,'Owner'}]}]}]}]}]).
 
 -define(SAMPLE_1,
 #{{<<"attack_resource">>,attempt,1} =>

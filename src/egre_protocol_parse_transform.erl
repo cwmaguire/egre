@@ -85,9 +85,8 @@ inline_form(Form = {call, {atom, FunName}, CallArgs},
             {Module, Forms ++ [Form], Funs, InlinedFuns}
     end;
 
-inline_form(LCForm = {lc, Body, Generators},
+inline_form({lc, Body, Generators},
             {Module, Forms, Funs, InlinedFuns}) ->
-    io:format(user, "LC Form = ~p~n", [LCForm]),
     {Module, [BodyForm], _, InlinedFuns2} =
         inline_form(Body, {Module, [], Funs, InlinedFuns}),
 
@@ -100,7 +99,6 @@ inline_form(LCForm = {lc, Body, Generators},
     {Module, Forms ++ [LC], Funs, InlinedFuns3};
 
 inline_form(Form, {Module, Forms, Funs, InlinedFuns}) ->
-    io:format(user, "Form = ~p~n", [Form]),
     timer:sleep(20),
     {Module, Forms ++ [Form], Funs, InlinedFuns}.
 

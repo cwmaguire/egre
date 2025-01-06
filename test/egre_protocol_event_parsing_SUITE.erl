@@ -8,14 +8,49 @@
 
 -export([no_events/1]).
 -export([terminal_event/1]).
+-export([action_reaction/1]).
 
 all() ->
     [no_events,
-     terminal_event].
+     terminal_event,
+     action_reaction].
 
 no_events(_Config) ->
     Events = egre_protocol_event_chains:get_events(?NO_EVENTS),
     ?assertEqual([], Events).
+
+terminal_event(_Config) ->
+    Events = egre_protocol_event_chains:get_events(?TERMINAL_EVENT),
+    ExpectedEvents = [[<<"attack_resource">>,
+                       attempt,
+
+                       %% Action event
+                       {{1, attack, 2, with, 3},
+                        _ActionTypeInference = [],
+                        [{1, <<"Character">>}, {2, <<"Target">>}, {3, <<"Owner">>}]},
+
+                       %% Reaction event
+                       {undefined, undefined, undefined}
+                      ]],
+    ?assertEqual(ExpectedEvents, Events).
+
+action_reaction(_Config) ->
+    Events = egre_protocol_event_chains:get_events(?ACTION_REACTION),
+    ExpectedEvents = [[<<"attack_resource">>,
+                       attempt,
+
+                       %% Action event
+                       {{1, attack, 2, with, 3},
+                        _ActionTypeInference = [],
+                        [{1, <<"Character">>}, {2, <<"Target">>}, {3, <<"Owner">>}]},
+
+                       %% Reaction event
+                       {{1, unreserve, 2, for, 3},
+                        _ReactionTypeInference = [],
+                        [{1, <<"Character">>}, {2, <<"Resource">>}, {3, <<"Owner">>}]}
+                      ]],
+    ?assertEqual(ExpectedEvents, Events).
+
 
 % - parent 1
 %   - child 1 / parent 2
@@ -30,20 +65,3 @@ no_events(_Config) ->
 
 % {attack, <<"bob">>}         -> {attack, <0.1.0>}
 % {attack, 1}, [{1, binary}]  -> {attack, 1}, [{1, pid}]
-
-terminal_event(_Config) ->
-    Events = egre_protocol_event_chains:get_events(?TERMINAL_EVENT),
-    ExpectedEvents = [[<<"attack_resource">>,
-                       attempt,
-
-                       %% Action event
-                       {1, attack, 2, with, 3},
-                       _ActionTypeInference = [],
-                       [{1, <<"Character">>}, {2, <<"Target">>}, {3, <<"Owner">>}],
-
-                       %% Reaction event
-                       undefined,
-                       undefined,
-                       undefined
-                      ]],
-    ?assertEqual(ExpectedEvents, Events).
