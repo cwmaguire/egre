@@ -53,7 +53,16 @@
                  {atom,unreserve},
                  {var,'Resource'},
                  {atom,for},
-                 {var,'Owner'}]}]}]}]}]).
+                 {var,'Owner'}]}]},
+             {call,
+              {remote,{atom,egre},{atom,attempt}},
+              [{call,{atom,self},[]},
+               {tuple,
+                [{var,'Animal'},
+                 {atom, make_noise}]},
+               {atom, false}
+              ]}
+            ]}]}]).
 
 -define(RESEND_RAW_EVENT,
         [{{<<"attack_resource">>,attempt,1},

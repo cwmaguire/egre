@@ -44,20 +44,35 @@ terminal_event(_Config) ->
 
 action_reaction(_Config) ->
     Events = egre_protocol_event_chains:get_events(?ACTION_REACTION),
+    SortedEvents = lists:sort(Events),
     ExpectedEvents = [[<<"attack_resource">>,
                        attempt,
 
                        %% Action event
                        {{1, attack, 2, with, 3},
-                        _ActionTypeInference = [],
+                        _ActionTypeInference2 = [],
+                        [{1, <<"Character">>}, {2, <<"Target">>}, {3, <<"Owner">>}]},
+
+                       %% Reaction event
+                       {{1, make_noise},
+                        _ReactionTypeInference2 = [],
+                        [{1, <<"Animal">>}]}
+                      ],
+                      [<<"attack_resource">>,
+                       attempt,
+
+                       %% Action event
+                       {{1, attack, 2, with, 3},
+                        _ActionTypeInference1 = [],
                         [{1, <<"Character">>}, {2, <<"Target">>}, {3, <<"Owner">>}]},
 
                        %% Reaction event
                        {{1, unreserve, 2, for, 3},
-                        _ReactionTypeInference = [],
+                        _ReactionTypeInference1 = [],
                         [{1, <<"Character">>}, {2, <<"Resource">>}, {3, <<"Owner">>}]}
-                      ]],
-    ?assertEqual(ExpectedEvents, Events).
+                      ]
+                     ],
+    ?assertEqual(ExpectedEvents, SortedEvents).
 
 resend_raw_event(_Config) ->
     expect_event(?RESEND_RAW_EVENT).
