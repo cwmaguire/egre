@@ -46,13 +46,13 @@ get_event_pairs({{_Module, _Function, _}, {clause, _Bindings, _Guards, _Body}}, 
 
 reaction_events({call,
                  {remote,
-                  {atom, egre_object},
+                  {atom, egre},
                   {atom, attempt}},
                  [_Target,
-                  Arguments]},
+                  Event | _MaybeSub]},
                 {Events, Variables}) ->
     % TODO replace variable arguments with values from Variables map
-    {IndexedEvent, IndexedVariables} = indexed_event(Arguments),
+    {IndexedEvent, IndexedVariables} = indexed_event(Event),
     ActionEvent = {IndexedEvent, _TypeInf = [], IndexedVariables},
     {[ActionEvent | Events], Variables};
 reaction_events({record, result, RecordFields},
@@ -108,14 +108,8 @@ indexed_event(Event) ->
     indexed_event(Event, _Variables = #{}).
 
 indexed_event({var, EventVar}, Variables) ->
-    case Variables of
-        #{EventVar := Event} ->
-            indexed_event(Event, Variables);
-        Other ->
-            ct:pal("~p:~p: Variables~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Other]),
-            ct:pal("~p:~p: EventVar~n\t~p~n", [?MODULE, ?FUNCTION_NAME, EventVar]),
-            error
-    end;
+    #{EventVar := Event} = Variables,
+    indexed_event(Event, Variables);
 indexed_event({tuple, Event}, _) ->
     {_, IndexedEvent, IndexedVariables} =
         lists:foldl(fun index_variable/2, {1, [], []}, Event),
