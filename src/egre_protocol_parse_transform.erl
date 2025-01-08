@@ -60,6 +60,9 @@ inline_api_clause(Module, {clause, Args, Guards, Forms}, Funs) ->
                     Forms),
         {clause, Args, Guards, Forms2}.
 
+inline_form(Form = {call, {atom, throw}, _CallArgs},
+            {Module, Forms, Funs, InlinedFuns}) ->
+    {Module, Forms ++ [Form], Funs, InlinedFuns};
 inline_form(Form = {call, {atom, FunName}, CallArgs},
             {Module, Forms, Funs, InlinedFuns}) ->
 
