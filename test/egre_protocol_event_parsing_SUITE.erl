@@ -9,11 +9,19 @@
 -export([no_events/1]).
 -export([terminal_event/1]).
 -export([action_reaction/1]).
+-export([resend_raw_event/1]).
+-export([resend_variable_event/1]).
+-export([modify_raw_event/1]).
+-export([broadcast_raw_event/1]).
 
 all() ->
     [no_events,
      terminal_event,
-     action_reaction].
+     action_reaction,
+     resend_raw_event,
+     resend_variable_event,
+     modify_raw_event,
+     broadcast_raw_event].
 
 no_events(_Config) ->
     Events = egre_protocol_event_chains:get_events(?NO_EVENTS),
@@ -51,6 +59,34 @@ action_reaction(_Config) ->
                       ]],
     ?assertEqual(ExpectedEvents, Events).
 
+resend_raw_event(_Config) ->
+    expect_event(?RESEND_RAW_EVENT).
+
+resend_variable_event(_Config) ->
+    expect_event(?RESEND_VARIABLE_EVENT).
+
+modify_raw_event(_Config) ->
+    expect_event(?MODIFY_RAW_EVENT).
+
+broadcast_raw_event(_Config) ->
+    expect_event(?BROADCAST_RAW_EVENT).
+
+expect_event(ApiFunctionClauses) ->
+    Events = egre_protocol_event_chains:get_events(ApiFunctionClauses),
+    ExpectedEvents = [[<<"attack_resource">>,
+                       attempt,
+
+                       %% Action event
+                       {{1, attack, 2, with, 3},
+                        _ActionTypeInference = [],
+                        [{1, <<"Character">>}, {2, <<"Target">>}, {3, <<"Owner">>}]},
+
+                       %% Reaction event
+                       {{1, go, 2},
+                        _ReactionTypeInference = [],
+                        [{1, <<"Character">>}, {2, <<"Direction">>}]}
+                      ]],
+    ?assertEqual(ExpectedEvents, Events).
 
 % - parent 1
 %   - child 1 / parent 2
