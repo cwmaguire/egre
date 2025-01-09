@@ -13,6 +13,7 @@
 -export([resend_variable_event/1]).
 -export([modify_raw_event/1]).
 -export([broadcast_raw_event/1]).
+-export([type_inference/1]).
 
 all() ->
     [no_events,
@@ -21,7 +22,8 @@ all() ->
      resend_raw_event,
      resend_variable_event,
      modify_raw_event,
-     broadcast_raw_event].
+     broadcast_raw_event,
+     type_inference].
 
 no_events(_Config) ->
     Events = egre_protocol_event_chains:get_events(?NO_EVENTS),
@@ -34,8 +36,8 @@ terminal_event(_Config) ->
 
                        %% Action event
                        {{1, attack, 2, with, 3},
-                        _ActionTypeInference = [],
-                        [{1, <<"Character">>}, {2, <<"Target">>}, {3, <<"Owner">>}]},
+                        [{1, <<"Character">>}, {2, <<"Target">>}, {3, <<"Owner">>}],
+                        _ActionTypeInference = []},
 
                        %% Reaction event
                        {undefined, undefined, undefined}
@@ -50,26 +52,26 @@ action_reaction(_Config) ->
 
                        %% Action event
                        {{1, attack, 2, with, 3},
-                        _ActionTypeInference2 = [],
-                        [{1, <<"Character">>}, {2, <<"Target">>}, {3, <<"Owner">>}]},
+                        [{1, <<"Character">>}, {2, <<"Target">>}, {3, <<"Owner">>}],
+                        _ActionTypeInference2 = []},
 
                        %% Reaction event
                        {{1, make_noise},
-                        _ReactionTypeInference2 = [],
-                        [{1, <<"Animal">>}]}
+                        [{1, <<"Animal">>}],
+                        _ReactionTypeInference2 = []}
                       ],
                       [<<"attack_resource">>,
                        attempt,
 
                        %% Action event
                        {{1, attack, 2, with, 3},
-                        _ActionTypeInference1 = [],
-                        [{1, <<"Character">>}, {2, <<"Target">>}, {3, <<"Owner">>}]},
+                        [{1, <<"Character">>}, {2, <<"Target">>}, {3, <<"Owner">>}],
+                        _ActionTypeInference1 = []},
 
                        %% Reaction event
                        {{1, unreserve, 2, for, 3},
-                        _ReactionTypeInference1 = [],
-                        [{1, <<"Character">>}, {2, <<"Resource">>}, {3, <<"Owner">>}]}
+                        [{1, <<"Character">>}, {2, <<"Resource">>}, {3, <<"Owner">>}],
+                        _ReactionTypeInference1 = []}
                       ]
                      ],
     ?assertEqual(ExpectedEvents, SortedEvents).
@@ -93,13 +95,30 @@ expect_event(ApiFunctionClauses) ->
 
                        %% Action event
                        {{1, attack, 2, with, 3},
-                        _ActionTypeInference = [],
-                        [{1, <<"Character">>}, {2, <<"Target">>}, {3, <<"Owner">>}]},
+                        [{1, <<"Character">>}, {2, <<"Target">>}, {3, <<"Owner">>}],
+                        _ActionTypeInference = []},
 
                        %% Reaction event
                        {{1, go, 2},
-                        _ReactionTypeInference = [],
-                        [{1, <<"Character">>}, {2, <<"Direction">>}]}
+                        [{1, <<"Character">>}, {2, <<"Direction">>}],
+                        _ReactionTypeInference = []}
+                      ]],
+    ?assertEqual(ExpectedEvents, Events).
+
+type_inference(_Config) ->
+    Events = egre_protocol_event_chains:get_events(?TYPE_INFERENCE),
+    ExpectedEvents = [[<<"attack_resource">>,
+                       attempt,
+
+                       %% Action event
+                       {{1, attack, 2, with, 3},
+                        [{1, <<"Character">>}, {2, <<"Target">>}, {3, <<"Owner">>}],
+                        [{1, pid}]},
+
+                       %% Reaction event
+                       {{1, go, 2},
+                        [{1, <<"Character">>}, {2, <<"Direction">>}],
+                        [{1, pid}]}
                       ]],
     ?assertEqual(ExpectedEvents, Events).
 

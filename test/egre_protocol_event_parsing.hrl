@@ -164,6 +164,30 @@
                            {var, 'Direction'}]}]}}]
                 }]}]}]).
 
+-define(TYPE_INFERENCE,
+        [{{<<"attack_resource">>,attempt,1},
+          [{clause,
+            [{tuple,
+              [{var, '_Map'},
+               {var,'_Props'},
+               {tuple,
+                [{var,'Character'},
+                 {atom,attack},
+                 {var,'Target'},
+                 {atom,with},
+                 {var,'Owner'}]},
+               {var,'_Context'}]}],
+            [[{op, '==', {var, 'Character'}, {call, {atom, self}, []}}]],
+            [{record, result,
+              [{record_field,
+                {atom,result},
+                {tuple,
+                 [{atom,broadcast},
+                  {tuple, [{var, 'Character'},
+                           {atom, go},
+                           {var, 'Direction'}]}]}}]
+                }]}]}]).
+
 -define(SAMPLE_1,
 #{{<<"attack_resource">>,attempt,1} =>
       [{clause,
