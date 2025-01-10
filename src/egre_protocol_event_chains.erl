@@ -21,9 +21,9 @@ get_events(ApiFuns) ->
 write_events(_) ->
     ok.
 
-flatten_clauses({K, Clauses}, ModuleClauses) ->
-    ModuleClausesNew = [{K, Clause} || Clause <- Clauses],
-    ModuleClauses ++ ModuleClausesNew.
+flatten_clauses({K, Clauses}, ModuleDisjunctions) ->
+    ModuleDisjunctionsNew = [{K, Disjunction} || Clause <- Clauses, Disjunction <- Clause],
+    ModuleDisjunctions ++ ModuleDisjunctionsNew.
 
 %% TODO flatten out guard disjunctions
 
@@ -34,16 +34,9 @@ flatten_clauses({K, Clauses}, ModuleClauses) ->
 
 get_event_pairs({_K, {clause, [{var, '_'}], _, _}}, Events) ->
     Events;
-get_event_pairs({{Module, attempt, ?API_FUNCTION_ARITY}, {clause, Arguments, Guards, Body}},
+get_event_pairs({{Module, attempt, ?API_FUNCTION_ARITY}, {clause, Arguments, Conjunction, Body}},
           Events) ->
-    %% TODO remove case statement once we've flattened out disjunctions
-    TypeMap =
-        case Guards of
-            [Conjunction] ->
-                lists:foldl(fun type_inference/2, #{}, Conjunction);
-            _ ->
-                #{}
-        end,
+    TypeMap = lists:foldl(fun type_inference/2, #{}, Conjunction),
     State = #state{type_inference = TypeMap},
 
     [{tuple, [_CustomData, _Props, Event, _Context]}] = Arguments,

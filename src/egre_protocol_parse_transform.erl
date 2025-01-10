@@ -26,6 +26,8 @@ translate_ast([FilenameAttribute | Forms]) ->
                            end,
                            ApiFuns),
     InlinedFuns,
+
+
     Path = path(),
     {ok, IO} = file:open(Path ++ "/" ++ FileRoot, [write]),
     FormsIolist = io_lib:format("~p", [InlinedFuns]),
@@ -52,13 +54,19 @@ fun2kv(Module, {function, Name, Arity, Clauses}) ->
 inline_api_fun({Module, _, _}, Clauses, Funs) ->
     [inline_api_clause(Module, C, Funs) || C <- Clauses].
 
+inline_api_clause(Module, {clause, Args, [], Forms}, Funs) ->
+    [inline_api_disjunction(Module, {clause, Args, [], Forms}, Funs)];
 inline_api_clause(Module, {clause, Args, Guards, Forms}, Funs) ->
+    [inline_api_disjunction(Module,
+                            {clause, Args, Disjunction, Forms},
+                            Funs) || Disjunction <- Guards].
 
+inline_api_disjunction(Module, {clause, Args, Disjunction, Forms}, Funs) ->
     {Module, Forms2, _Funs, _} =
         lists:foldl(fun inline_form/2,
                     {Module, [], Funs, []},
                     Forms),
-        {clause, Args, Guards, Forms2}.
+        {clause, Args, Disjunction, Forms2}.
 
 inline_form(Form = {call, {atom, throw}, _CallArgs},
             {Module, Forms, Funs, InlinedFuns}) ->
