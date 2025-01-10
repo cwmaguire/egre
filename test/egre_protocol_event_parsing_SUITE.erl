@@ -111,13 +111,13 @@ type_inference(_Config) ->
                        attempt,
 
                        %% Action event
-                       {{1, attack, 2, with, 3},
-                        [{1, <<"Character">>}, {2, <<"Target">>}, {3, <<"Owner">>}],
-                        [{1, pid}]},
+                       {{1, abc, 2, def, 3},
+                        [{1, <<"Pid1">>}, {2, <<"Pid2">>}, {3, <<"NotPid">>}],
+                        [{2, pid}, {1, pid}]},
 
                        %% Reaction event
-                       {{1, go, 2},
-                        [{1, <<"Character">>}, {2, <<"Direction">>}],
+                       {{1, ghi, 2, 3},
+                        [{1, <<"Pid1">>}, {2, <<"Pid3">>}, {3, <<"NotPid">>}],
                         [{1, pid}]}
                       ]],
     ?assertEqual(ExpectedEvents, Events).

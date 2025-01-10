@@ -25,11 +25,26 @@ flatten_clauses({K, Clauses}, ModuleClauses) ->
     ModuleClausesNew = [{K, Clause} || Clause <- Clauses],
     ModuleClauses ++ ModuleClausesNew.
 
+%% TODO flatten out guard disjunctions
+
+% a(X) when is_integer(X); is_binary(X), size(X) > 3; X == undefined
+%           [                                        ,                 ] - disjunctions (or), e.g. X; Y; Z
+%            [             ], [                     ], [              ] - multiple conjunctions, e.g. A, B, C
+%             is_integer(X)    is_binary(X), size(X)    X == undefined - guard expressions in conjunctions
+
 get_event_pairs({_K, {clause, [{var, '_'}], _, _}}, Events) ->
     Events;
 get_event_pairs({{Module, attempt, ?API_FUNCTION_ARITY}, {clause, Arguments, Guards, Body}},
           Events) ->
-    State = #state{type_inference = type_inference(Guards)},
+    %% TODO remove case statement once we've flattened out disjunctions
+    TypeMap =
+        case Guards of
+            [Conjunction] ->
+                lists:foldl(fun type_inference/2, #{}, Conjunction);
+            _ ->
+                #{}
+        end,
+    State = #state{type_inference = TypeMap},
 
     [{tuple, [_CustomData, _Props, Event, _Context]}] = Arguments,
     {IndexedEvent, IndexedVariables, IndexedTypes} =
@@ -49,11 +64,15 @@ get_event_pairs({{Module, attempt, ?API_FUNCTION_ARITY}, {clause, Arguments, Gua
 get_event_pairs({{_Module, _Function, _}, {clause, _Bindings, _Guards, _Body}}, Events) ->
     Events.
 
-type_inference([[{op, '==', {var, Var}, {call, {atom, self}, []}}]]) ->
-    #{Var => pid};
-type_inference(Other) ->
+type_inference(A = {op, '==', Operand1, {var, Var}}, TypeMap) ->
+    ct:pal("~p:~p: A~n\t~p~n", [?MODULE, ?FUNCTION_NAME, A]),
+    type_inference( {op, '==', {var, Var}, Operand1}, TypeMap);
+type_inference(B ={op, '==', {var, Var}, {call, {atom, self}, []}}, TypeMap) ->
+    ct:pal("~p:~p: B~n\t~p~n", [?MODULE, ?FUNCTION_NAME, B]),
+    TypeMap#{Var => pid};
+type_inference(Other, TypeMap) ->
     ct:pal("~p:~p: Other~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Other]),
-    #{}.
+    TypeMap.
 
 reaction_events({call,
                  {remote,
