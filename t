@@ -4,6 +4,10 @@ rm -rf logs/
 
 rm test/level_*.beam
 
+touch src/*
+touch test/*
+touch include/*
+
 cp src/egre_protocol_parse_transform.erl \
    test/egre_protocol_parse_transform_SUITE_data/
 
@@ -19,6 +23,7 @@ fi
 # See erlang.mk
 # Search for "CT_SUITES"
 # erlang.mk automatically adds _SUITE to the filename
+#CT_SUITES="egre_protocol_event_parsing" \
 CT_SUITES="egre_protocol_parse_transform egre_protocol_event_parsing" \
 CT_OPTS="${CASES} -config test/test.config " \
 make ct | tee  out
