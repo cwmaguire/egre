@@ -8,11 +8,12 @@ parse_transform([FilenameAttribute | Forms], _Options) ->
 
     Forms2 = [strip_lines(F) || F <- Forms],
     ApiFuns = lists:filter(fun is_api_fun/1, Forms2),
-    Map = maps:from_list([fun2kv(Module, F) || F <- ApiFuns]),
+    FunClauses = [fun2kv(Module, F) || F <- ApiFuns],
+    Flattened = [{MFA, Clause} || {MFA, Clauses} <- FunClauses, Clause <- Clauses],
 
     Path = path(),
     {ok, IO} = file:open(Path ++ Filename, [write]),
-    FormsIolist = io_lib:format("~p", [Map]),
+    FormsIolist = io_lib:format("~p", [Flattened]),
     file:write(IO, FormsIolist),
     file:close(IO),
     Forms.

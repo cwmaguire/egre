@@ -25,15 +25,20 @@ translate_ast([FilenameAttribute | Forms]) ->
                                inline_api_fun(K, V, Funs)
                            end,
                            ApiFuns),
-    InlinedFuns,
+
+    FunClauses = lists:foldl(fun flatten_clauses/2, [], maps:to_list(InlinedFuns)),
 
 
     Path = path(),
     {ok, IO} = file:open(Path ++ "/" ++ FileRoot, [write]),
-    FormsIolist = io_lib:format("~p", [InlinedFuns]),
+    FormsIolist = io_lib:format("~p", [FunClauses]),
     file:write(IO, FormsIolist),
     file:close(IO),
-    maps:to_list(InlinedFuns).
+    FunClauses.
+
+flatten_clauses({K, Clauses}, ModuleDisjunctions) ->
+    ModuleDisjunctionsNew = [{K, Disjunction} || Clause <- Clauses, Disjunction <- Clause],
+    ModuleDisjunctions ++ ModuleDisjunctionsNew.
 
 is_fun({function, _Line, _Name, _Arity, _Clauses}) ->
     true;
@@ -58,10 +63,17 @@ inline_api_clause(Module, {clause, Args, [], Forms}, Funs) ->
     [inline_api_disjunction(Module, {clause, Args, [], Forms}, Funs)];
 inline_api_clause(Module, {clause, Args, Guards, Forms}, Funs) ->
     [inline_api_disjunction(Module,
-                            {clause, Args, Disjunction, Forms},
-                            Funs) || Disjunction <- Guards].
+                            {clause, Args, Conjunction, Forms},
+                            Funs) || Conjunction <- Guards].
 
-inline_api_disjunction(Module, {clause, Args, Disjunction, Forms}, Funs) ->
+inline_api_disjunction(Module, {clause, Args, MaybeConjunction, Forms}, Funs) ->
+    Disjunction =
+        case MaybeConjunction of
+            [] ->
+                [];
+            _ ->
+                [MaybeConjunction]
+        end,
     {Module, Forms2, _Funs, _} =
         lists:foldl(fun inline_form/2,
                     {Module, [], Funs, []},

@@ -18,6 +18,7 @@
 -export([level_2_call_1_fun_arg/1]).
 -export([level_2_call_with_lc/1]).
 -export([level_2_call_recursive/1]).
+-export([level_1_decouple_disjunctions/1]).
 
 all() ->
     [level_1_call_no_args,
@@ -27,7 +28,8 @@ all() ->
      level_2_call_2_var_args,
      level_2_call_1_fun_arg,
      level_2_call_with_lc,
-     level_2_call_recursive].
+     level_2_call_recursive,
+     level_1_decouple_disjunctions].
 
 init_per_suite(Config) ->
 
@@ -64,6 +66,10 @@ level_1_call_1_literal_arg(Config) ->
 
 level_1_call_1_var_arg(Config) ->
     Test = level_1_call_1_var_arg,
+    compare(Test, compile(Test, Config)).
+
+level_1_decouple_disjunctions(Config) ->
+    Test = level_1_decouple_disjunctions,
     compare(Test, compile(Test, Config)).
 
 level_2_call_no_args(Config) ->

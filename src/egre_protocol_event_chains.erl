@@ -14,16 +14,11 @@ extract(ApiFuns) ->
   Events = get_events(ApiFuns),
   write_events(Events).
 
-get_events(ApiFuns) ->
-    FunClauses = lists:foldl(fun flatten_clauses/2, [], ApiFuns),
-    lists:foldl(fun get_event_pairs/2, [], FunClauses).
+get_events(ApiClauses) ->
+    lists:foldl(fun get_event_pairs/2, [], ApiClauses).
 
 write_events(_) ->
     ok.
-
-flatten_clauses({K, Clauses}, ModuleDisjunctions) ->
-    ModuleDisjunctionsNew = [{K, Disjunction} || Clause <- Clauses, Disjunction <- Clause],
-    ModuleDisjunctions ++ ModuleDisjunctionsNew.
 
 %% TODO flatten out guard disjunctions
 
