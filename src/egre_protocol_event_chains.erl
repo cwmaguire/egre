@@ -20,13 +20,6 @@ get_events(ApiClauses) ->
 write_events(_) ->
     ok.
 
-%% TODO flatten out guard disjunctions
-
-% a(X) when is_integer(X); is_binary(X), size(X) > 3; X == undefined
-%           [                                        ,                 ] - disjunctions (or), e.g. X; Y; Z
-%            [             ], [                     ], [              ] - multiple conjunctions, e.g. A, B, C
-%             is_integer(X)    is_binary(X), size(X)    X == undefined - guard expressions in conjunctions
-
 get_event_pairs({_K, {clause, [{var, '_'}], _, _}}, Events) ->
     Events;
 get_event_pairs({{Module, attempt, ?API_FUNCTION_ARITY}, {clause, Arguments, Conjunction, Body}},
