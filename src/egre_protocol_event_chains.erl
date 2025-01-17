@@ -46,13 +46,13 @@ get_event_pairs({{_Module, _Function, _}, {clause, _Bindings, _Guards, _Body}}, 
     Events.
 
 type_inference(A = {op, '==', Operand1, {var, Var}}, TypeMap) ->
-    ct:pal("~p:~p: A~n\t~p~n", [?MODULE, ?FUNCTION_NAME, A]),
+    %ct:pal("~p:~p: A~n\t~p~n", [?MODULE, ?FUNCTION_NAME, A]),
     type_inference( {op, '==', {var, Var}, Operand1}, TypeMap);
 type_inference(B ={op, '==', {var, Var}, {call, {atom, self}, []}}, TypeMap) ->
-    ct:pal("~p:~p: B~n\t~p~n", [?MODULE, ?FUNCTION_NAME, B]),
+    %ct:pal("~p:~p: B~n\t~p~n", [?MODULE, ?FUNCTION_NAME, B]),
     TypeMap#{Var => pid};
 type_inference(Other, TypeMap) ->
-    ct:pal("~p:~p: Other~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Other]),
+    %ct:pal("~p:~p: Other~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Other]),
     TypeMap.
 
 reaction_events({call,
@@ -68,7 +68,7 @@ reaction_events({call,
     State#state{events = [ActionEvent | Events]};
 reaction_events({record, result, RecordFields},
                 EventsVars) ->
-    ct:pal("~p:~p: RecordFields~n\t~p~n", [?MODULE, ?FUNCTION_NAME, RecordFields]),
+    %ct:pal("~p:~p: RecordFields~n\t~p~n", [?MODULE, ?FUNCTION_NAME, RecordFields]),
     maybe_result_record_event(RecordFields, EventsVars);
 reaction_events({match, {var, Var}, Value},
                 State = #state{variables = Variables}) ->
@@ -85,7 +85,7 @@ reaction_events(Forms, State) when is_list(Forms) ->
                 State,
                 Forms);
 reaction_events(_Form, State) ->
-    ct:pal("~p:~p: _Form~n\t~p~n\t~p~n", [?MODULE, ?FUNCTION_NAME, _Form, State]),
+    %ct:pal("~p:~p: _Form~n\t~p~n\t~p~n", [?MODULE, ?FUNCTION_NAME, _Form, State]),
     State.
 
 maybe_result_record_event(RecordFields, State) ->

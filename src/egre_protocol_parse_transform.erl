@@ -27,14 +27,18 @@ translate_ast([FilenameAttribute | Forms]) ->
                            ApiFuns),
 
     FunClauses = lists:foldl(fun flatten_clauses/2, [], maps:to_list(InlinedFuns)),
+    % all of the scope paths, or all of the fun clause-guards, need to be siblings, which means we
+    % need to add them all to the same list
+    ScopePaths = lists:foldl(fun scope_paths/2, [], FunClauses),
+    SortedScopePaths = lists:sort(ScopePaths),
 
 
     Path = path(),
     {ok, IO} = file:open(Path ++ "/" ++ FileRoot, [write]),
-    FormsIolist = io_lib:format("~p", [FunClauses]),
+    FormsIolist = io_lib:format("~p", [SortedScopePaths]),
     file:write(IO, FormsIolist),
     file:close(IO),
-    FunClauses.
+    ScopePaths.
 
 flatten_clauses({K, Clauses}, ModuleDisjunctions) ->
     ModuleDisjunctionsNew = [{K, Disjunction} || Clause <- Clauses, Disjunction <- Clause],
@@ -142,8 +146,64 @@ inline_clause({clause, Args, Guards, Body},
     Clause = {clause, Args2, Guards, Body2},
     {Module, Forms ++ [Clause], Funs, InlinedFuns2}.
 
-filename({attribute, _L, file, {Filename, _}}) ->
-    filename:rootname(filename:basename(Filename)).
+% clause({clause,Anno,H0,G0,B0}) ->
+%     H1 = head(H0),
+%     G1 = guard(G0),
+%     B1 = exprs(B0),
+%     {clause,H1,G1,B1}.
+
+% [{clause,[{integer,1}],[],[{atom,ok}]},[]],
+
+scope_paths({K, Clause}, ScopePaths) ->
+    ClauseScopePaths = clause_scope_paths(Clause, []),
+    NewScopePaths = [{K, ClauseScopePath} || ClauseScopePath <- ClauseScopePaths],
+    ScopePaths ++ NewScopePaths.
+
+clause_scope_paths({clause, Head, Guards, Body}, ScopePaths) ->
+    NewScopePaths = lists:foldl(fun body_scope_paths/2, [], Body),
+    ScopePathClauses =
+        case Guards of
+            [] ->
+                [{clause, Head, [], ScopePath} || ScopePath <- NewScopePaths];
+            _ ->
+                CartesianProduct = [{Guard, ScopePath} || Guard <- Guards,
+                                                          ScopePath <- NewScopePaths],
+                [{clause, Head, [Guard], ScopePath} || {Guard, ScopePath} <- CartesianProduct]
+        end,
+    ScopePaths ++ ScopePathClauses.
+
+% {'case', E0, Cs0} ->
+%     Cs1 = icr_clauses(Cs0),
+%     {'case',Anno,E1,Cs1};
+
+% icr_clauses([C0|Cs]) ->
+%     C1 = clause(C0),
+%     [C1|icr_clauses(Cs)];
+% icr_clauses([]) -> [].
+
+% clause({clause,H0,G0,B0}) ->
+%     H1 = head(H0),
+%     G1 = guard(G0),
+%     B1 = exprs(B0),
+%     {clause,H1,G1,B1}.
+
+body_scope_paths({'case', Expr, Clauses}, ScopePaths) ->
+    NewScopePaths = lists:foldl(fun clause_scope_paths/2, [], Clauses),
+    NewCaseScopePaths =
+        [[{'case', Expr, [NewScopePath]}] || NewScopePath <- NewScopePaths],
+    case ScopePaths of
+        [] ->
+            NewCaseScopePaths;
+        _ ->
+            CartesianProduct =
+                [ScopePath ++ NewScopePath || ScopePath <- ScopePaths,
+                                              NewScopePath <- NewCaseScopePaths],
+            CartesianProduct
+    end;
+body_scope_paths(NotCase, []) ->
+    [[NotCase]];
+body_scope_paths(NotCase, ScopePaths) ->
+    [ScopePath ++ [NotCase] || ScopePath <- ScopePaths].
 
 path() ->
     case os:getenv("EGRE_PARSE_TRANSFORM_OUT_DIR") of
@@ -180,3 +240,6 @@ remove_prefix(Prefix, Bin) ->
         Bin_ when Bin_ == Bin ->
             Bin
     end.
+
+filename({attribute, _L, file, {Filename, _}}) ->
+    filename:rootname(filename:basename(Filename)).

@@ -10,7 +10,12 @@ attempt(_) ->
             case {} of
                 {} ->
                     ok
-            end;
+            end
+    end;
+attempt(_) ->
+    X = 1,
+    Y = a,
+    case {X, Y} of
         {W, Z} when Z == a ->
             case {} of
                 {} ->

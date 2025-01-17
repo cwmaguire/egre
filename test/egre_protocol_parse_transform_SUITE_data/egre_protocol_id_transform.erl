@@ -10,10 +10,11 @@ parse_transform([FilenameAttribute | Forms], _Options) ->
     ApiFuns = lists:filter(fun is_api_fun/1, Forms2),
     FunClauses = [fun2kv(Module, F) || F <- ApiFuns],
     Flattened = [{MFA, Clause} || {MFA, Clauses} <- FunClauses, Clause <- Clauses],
+    Sorted = lists:sort(Flattened),
 
     Path = path(),
     {ok, IO} = file:open(Path ++ Filename, [write]),
-    FormsIolist = io_lib:format("~p", [Flattened]),
+    FormsIolist = io_lib:format("~p", [Sorted]),
     file:write(IO, FormsIolist),
     file:close(IO),
     Forms.

@@ -19,6 +19,12 @@
 -export([level_2_call_with_lc/1]).
 -export([level_2_call_recursive/1]).
 -export([level_1_decouple_disjunctions/1]).
+-export([case_no_guards_1_clause/1]).
+-export([case_no_guards_2_clauses/1]).
+-export([case_1_guard_2_clauses/1]).
+-export([case_2_guards_2_clauses/1]).
+-export([case_2_clauses_with_2_guards_each/1]).
+-export([case_nested/1]).
 
 all() ->
     [level_1_call_no_args,
@@ -29,9 +35,19 @@ all() ->
      level_2_call_1_fun_arg,
      level_2_call_with_lc,
      level_2_call_recursive,
-     level_1_decouple_disjunctions].
+     level_1_decouple_disjunctions,
+     case_no_guards_1_clause,
+     case_no_guards_2_clauses,
+     case_1_guard_2_clauses,
+     case_2_guards_2_clauses,
+     case_2_clauses_with_2_guards_each,
+     case_nested].
 
 init_per_suite(Config) ->
+
+    %egre_dbg:add(egre_protocol_parse_transform, clause_scope_paths),
+    %egre_dbg:add(egre_protocol_parse_transform, scope_paths),
+    %egre_dbg:add(egre_protocol_parse_transform, body_scope_paths),
 
     DataDir = proplists:get_value(data_dir, Config),
     %% CWD is the logs/ct_run... dir
@@ -90,6 +106,30 @@ level_2_call_with_lc(Config) ->
 
 level_2_call_recursive(Config) ->
     Test = level_2_call_recursive,
+    compare(Test, compile(Test, Config)).
+
+case_no_guards_1_clause(Config) ->
+    Test = case_no_guards_1_clause,
+    compare(Test, compile(Test, Config)).
+
+case_no_guards_2_clauses(Config) ->
+    Test = case_no_guards_2_clauses,
+    compare(Test, compile(Test, Config)).
+
+case_1_guard_2_clauses(Config) ->
+    Test = case_1_guard_2_clauses,
+    compare(Test, compile(Test, Config)).
+
+case_2_guards_2_clauses(Config) ->
+    Test = case_2_guards_2_clauses,
+    compare(Test, compile(Test, Config)).
+
+case_2_clauses_with_2_guards_each(Config) ->
+    Test = case_2_clauses_with_2_guards_each,
+    compare(Test, compile(Test, Config)).
+
+case_nested(Config) ->
+    Test = case_nested,
     compare(Test, compile(Test, Config)).
 
 compare(_Test, {Same, Same}) ->

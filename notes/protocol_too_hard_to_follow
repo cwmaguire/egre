@@ -1,6 +1,119 @@
 Protocol is too hard to follow
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2025-01-15   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+Here's Erlang's "identity" transform so you can see what all the expressions look like as
+an AST term:
+
+  https://github.com/erlang/otp/blob/OTP-27.2/lib/stdlib/examples/erl_id_trans.erl#L69
+
+Building on yesterday, I'm going to walk through how I'd generate the first path:
+
+  We expect a list of paths containing a single path:
+  [[{c1, {cc1.1 {gA}}}, {c2, {cc2.1, {gE}}}]]
+
+    These are two "sibling" paths at the top level of the function clause-conjunction.
+
+  We get to case clause 1 with a list of paths containing one empty path: [[]].
+
+  We hit a {case, ...} statement, and "go into" "case mode". We now know that we're going to
+  build some things that will be children of this case clause.
+
+  We effectively have [[{c1, ...}]]
+
+  Knowing that we're dealing with case clause-conjunctions, we step into the first case clause.
+
+  We see that the first case clause has two conjunctions. We need one path for each conjunction.
+
+  We start two child paths, one for each conjunction: A and B.
+
+  These two paths look like this:
+  [[{cc1.1, A, ...}], [{cc1.1, B, ...}]]      % it is assumed that we include the case expression
+
+  For each path, we go through the case clause body, but discover no expressions.
+
+  [[{cc1.1, A, []}] [{cc1.1, B, []}]]
+
+  We pass back our new list of lists because we've reached the bottom of these tree branches.
+
+  For each branch returned, we copy [{c1, ...}], add the paths to the copy, and put them back
+  in the main list.
+
+  New outer list = []
+  New case clause lists to replace existing single list:
+    [[{c1, _Exp, [cc1.1, A, []]}],
+     [{c1, _Exp, [cc1.1, B, []]}]]
+
+  We're finished with the case, so we can go on to the next expression in the function guard-conjunction body
+
+  ... the theme here, is that we walk our children, and then copy ourselves for each of our children.
+  An alternative would be to send our path to our children, and have them copy it for each instance they
+  create ... except, the child would need to know how to wrap us (i.e. a case statement) around them.
+  Better for the children not to have to know what they're children of.
+
+  Yeah, we need to wrap our children.
+  I think we take the list of paths, pull each path off, and wrap it as a single clause within a copy of the case.
+
+┏━━━━━━━━━━━━━━━━┓
+┃   2025-01-14   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+Crap, I had a huge example typed out showing how case clause-guard combinations would be flattened out.
+Basically, all "sibling" child elements of an AST object become a cartesian product of all the combinations
+of case clauses and their conjuctions.
+
+  If we had two sibling case statements:
+
+  case 1
+      clause 1.1 with guards A ; B
+      clause 1.2 with guards C ; D
+          case 3
+              clause 3.1 with guards I ; J
+              clause 3.2 with guard K
+
+  case 2
+      clause 2.1 with guards E ; F
+      clause 2.2 with guards G ; H
+
+  Then we'd have 20 different code paths (C is case, CC is case clause, G is guard).
+  One code path per row.
+
+  e.g. case 1, clause 1, guard A, then case 2, clause 1, guard E
+
+  c1 cc1.1 gA                               c2 cc2.1 gE
+  c1 cc1.1 gA                               c2 cc2.1 gF
+  c1 cc1.1 gA                               c2 cc2.2 gG
+  c1 cc1.1 gA                               c2 cc2.2 gH
+  c1 cc1.1    gB                            c2 cc2.1 gE
+  c1 cc1.1    gB                            c2 cc2.1 gF
+  c1 cc1.1    gB                            c2 cc2.2 gG
+  c1 cc1.1    gB                            c2 cc2.2 gH
+  c1 cc1.2       gC c3 cc3.1 gI             c2 cc2.1 gE
+  c1 cc1.2       gC c3 cc3.1 gI             c2 cc2.1 gF
+  c1 cc1.2       gC c3 cc3.2 gI             c2 cc2.2 gG
+  c1 cc1.2       gC c3 cc3.2 gI             c2 cc2.2 gH
+  c1 cc1.2       gC c3 cc3.1    gJ          c2 cc2.1 gE
+  c1 cc1.2       gC c3 cc3.1    gJ          c2 cc2.1 gF
+  c1 cc1.2       gC c3 cc3.2    gJ          c2 cc2.2 gG
+  c1 cc1.2       gC c3 cc3.2    gJ          c2 cc2.2 gH
+  c1 cc1.2       gC c3             cc3.2 gK c2 cc2.1 gE
+  c1 cc1.2       gC c3             cc3.2 gK c2 cc2.1 gF
+  c1 cc1.2       gC c3             cc3.2 gK c2 cc2.2 gG
+  c1 cc1.2       gC c3             cc3.2 gK c2 cc2.2 gH
+
+  I laid them out so that the different branches are visible
+
+  Each branch represents a different path the code could take at runtime, and the
+  different scopes that are possible.
+
+  A guard disjunction (i.e. a semi-colon) separates a set of conjunctions.
+  Each conjunction represents a different set of possible type constraints.
+
+  This is a ficticious, extreme case. Most rules won't have a complexity nearly this high.
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2024-12-23   ┃
 ┗━━━━━━━━━━━━━━━━┛
 
