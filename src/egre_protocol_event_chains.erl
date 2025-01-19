@@ -28,14 +28,15 @@ get_event_pairs({{Module, attempt, ?API_FUNCTION_ARITY}, {clause, Arguments, Con
     State = #state{type_inference = TypeMap},
 
     [{tuple, [_CustomData, _Props, Event, _Context]}] = Arguments,
-    {IndexedEvent, IndexedVariables, IndexedTypes} =
-        indexed_event(Event, State),
-    ActionEvent = {IndexedEvent, IndexedVariables, IndexedTypes},
+
+    ActionEvent =
+        {_IndexedEvent, _IndexedVariables, _IndexedTypes} =
+            indexed_event(Event, State),
 
     ReactionEvents =
         case lists:foldl(fun reaction_events/2, State, Body) of
             #state{events = []} ->
-                [{undefined, undefined, undefined}];
+                [undefined];
             #state{events = StateEvents} ->
                 StateEvents
         end,
@@ -45,15 +46,51 @@ get_event_pairs({{Module, attempt, ?API_FUNCTION_ARITY}, {clause, Arguments, Con
 get_event_pairs({{_Module, _Function, _}, {clause, _Bindings, _Guards, _Body}}, Events) ->
     Events.
 
-type_inference(A = {op, '==', Operand1, {var, Var}}, TypeMap) ->
-    %ct:pal("~p:~p: A~n\t~p~n", [?MODULE, ?FUNCTION_NAME, A]),
+type_inference({op, '==', Operand1, {var, Var}}, TypeMap) ->
     type_inference( {op, '==', {var, Var}, Operand1}, TypeMap);
-type_inference(B ={op, '==', {var, Var}, {call, {atom, self}, []}}, TypeMap) ->
-    %ct:pal("~p:~p: B~n\t~p~n", [?MODULE, ?FUNCTION_NAME, B]),
+type_inference({op, '==', {var, Var}, Operand1}, TypeMap) ->
+    case type_inference_equals(Operand1) of
+        undefined ->
+            TypeMap;
+        Type ->
+            TypeMap#{Var => Type}
+    end;
+type_inference({call, {atom, is_pid}, [{var, Var}]}, TypeMap) ->
     TypeMap#{Var => pid};
+type_inference({match, {var, Var1}, {var, Var2}}, TypeMap) ->
+    case TypeMap of
+        #{Var2 := Type} ->
+            TypeMap#{Var1 => Type};
+        _ ->
+            TypeMap
+    end;
 type_inference(Other, TypeMap) ->
-    %ct:pal("~p:~p: Other~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Other]),
+    ct:pal("~p:~p: Other~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Other]),
     TypeMap.
+
+type_inference_equals({call, {atom, self}, []}) ->
+    pid;
+type_inference_equals({atom, _}) ->
+    atom;
+type_inference_equals({integer, _}) ->
+    integer;
+type_inference_equals({float, _}) ->
+    float;
+type_inference_equals({string, _}) ->
+    string;
+type_inference_equals({char, _}) ->
+    char;
+type_inference_equals({nil}) ->
+    list;
+type_inference_equals({cons, _}) ->
+    list;
+type_inference_equals({bin, _}) ->
+    bin;
+type_inference_equals(_) ->
+    undefined.
+
+%% TODO go look at actual rules modules to see what kind of type inference cases I need
+%% to watch for.
 
 reaction_events({call,
                  {remote,
@@ -62,14 +99,26 @@ reaction_events({call,
                  [_Target,
                   Event | _MaybeSub]},
                 State = #state{events = Events}) ->
-    {IndexedEvent, IndexedVariables, IndexedTypes} =
-        indexed_event(Event, State),
-    ActionEvent = {IndexedEvent, IndexedVariables, IndexedTypes},
-    State#state{events = [ActionEvent | Events]};
+    ReactionEvent = indexed_event(Event, State),
+    State#state{events = [ReactionEvent | Events]};
 reaction_events({record, result, RecordFields},
                 EventsVars) ->
     %ct:pal("~p:~p: RecordFields~n\t~p~n", [?MODULE, ?FUNCTION_NAME, RecordFields]),
     maybe_result_record_event(RecordFields, EventsVars);
+reaction_events(Match = {match, {var, Var1}, {var, Var2}},
+                State = #state{variables = Variables,
+                               type_inference = TypeMap}) ->
+    Variables2 =
+        case Variables of
+            #{Var2 := Value} ->
+                Variables#{Var1 => Value};
+            _ ->
+                Variables#{Var1 => Var2}
+        end,
+
+    TypeMap2 = type_inference(Match, TypeMap),
+    State#state{variables = Variables2,
+                type_inference = TypeMap2};
 reaction_events({match, {var, Var}, Value},
                 State = #state{variables = Variables}) ->
     % TODO recurse through the assignment, e.g. when assigning from a

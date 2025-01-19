@@ -1,6 +1,50 @@
 Protocol is too hard to follow
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2025-01-18   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+Impossible code paths shouldn't be listed as generated events:
+
+a(S) when is_binary(S); is_list(S) ->
+  case S of
+    <<"abc">> ->
+        1;
+    "abc" ->   %% We can't get here is S is binary
+        2
+  end
+
+┏━━━━━━━━━━━━━━━━┓
+┃   2025-01-17   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+I may need to do type inference across all the functions in a module: some attempt functions
+limit what they'll subscribe to, based on the types, and then the subscribe functions will
+only be called for those events: the attempt action event types imply what the succeed
+action event types could be.
+
+  The attempt/1 function is acting as a type-informed filter on events but the succeed/1
+  function has no knowledge of the type-based filtering criteria.
+  (i.e. attempt/1 doesn't *only* filter on types, it filters on shape as well; however,
+   the succeed function knows about the shape, it's just missing the types.)
+
+Once again, my goal here is to not require any custom Erlang: the parse transform code
+should do all the work in figuring out what action and reaction event elements have what
+types.
+
+  I don't believe that parsing "free-form" Erlang is the _best_ way to track event types
+  in EGRE; however, it's the way I'm choosing to go; it's interesting, it's challenging,
+  and it fits the theme of "maximum flexibility", which is the whole reason that the only
+  requirement of an event is that it's a tuple. As soon as I add a constraint on the
+  events, through a syntax, type restriction, or annotation, some kind of flexibility will
+  be curtailed. In a sense, the events are opaque to EGRE: that is, EGRE passes them on
+  blindly and doesn't need to know anything beyond that they are tuples (if it even needs
+  to know that). For the tuples to remain opaque, any type inference solution needs to be
+  able to read any valid Erlang.
+
+  Terry and I have spit-balled a few other ways to embed types into the events.
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2025-01-15   ┃
 ┗━━━━━━━━━━━━━━━━┛
 
@@ -82,26 +126,38 @@ of case clauses and their conjuctions.
 
   e.g. case 1, clause 1, guard A, then case 2, clause 1, guard E
 
-  c1 cc1.1 gA                               c2 cc2.1 gE
-  c1 cc1.1 gA                               c2 cc2.1 gF
-  c1 cc1.1 gA                               c2 cc2.2 gG
-  c1 cc1.1 gA                               c2 cc2.2 gH
-  c1 cc1.1    gB                            c2 cc2.1 gE
-  c1 cc1.1    gB                            c2 cc2.1 gF
-  c1 cc1.1    gB                            c2 cc2.2 gG
-  c1 cc1.1    gB                            c2 cc2.2 gH
-  c1 cc1.2       gC c3 cc3.1 gI             c2 cc2.1 gE
-  c1 cc1.2       gC c3 cc3.1 gI             c2 cc2.1 gF
-  c1 cc1.2       gC c3 cc3.2 gI             c2 cc2.2 gG
-  c1 cc1.2       gC c3 cc3.2 gI             c2 cc2.2 gH
-  c1 cc1.2       gC c3 cc3.1    gJ          c2 cc2.1 gE
-  c1 cc1.2       gC c3 cc3.1    gJ          c2 cc2.1 gF
-  c1 cc1.2       gC c3 cc3.2    gJ          c2 cc2.2 gG
-  c1 cc1.2       gC c3 cc3.2    gJ          c2 cc2.2 gH
-  c1 cc1.2       gC c3             cc3.2 gK c2 cc2.1 gE
-  c1 cc1.2       gC c3             cc3.2 gK c2 cc2.1 gF
-  c1 cc1.2       gC c3             cc3.2 gK c2 cc2.2 gG
-  c1 cc1.2       gC c3             cc3.2 gK c2 cc2.2 gH
+  c1 cc1.1 gA                                                          c2 cc2.1 gE
+  c1 cc1.1 gA                                                          c2 cc2.1 gF
+  c1 cc1.1 gA                                                          c2 cc2.2 gG
+  c1 cc1.1 gA                                                          c2 cc2.2 gH
+  c1 cc1.1    gB                                                       c2 cc2.1 gE
+  c1 cc1.1    gB                                                       c2 cc2.1 gF
+  c1 cc1.1    gB                                                       c2 cc2.2 gG
+  c1 cc1.1    gB                                                       c2 cc2.2 gH
+  c1 cc1.2       gC c3 cc3.1 gI                                        c2 cc2.1 gE
+  c1 cc1.2       gC c3 cc3.1 gI                                        c2 cc2.1 gF
+  c1 cc1.2       gC c3 cc3.2 gI                                        c2 cc2.2 gG
+  c1 cc1.2       gC c3 cc3.2 gI                                        c2 cc2.2 gH
+  c1 cc1.2       gC c3 cc3.1    gJ                                     c2 cc2.1 gE
+  c1 cc1.2       gC c3 cc3.1    gJ                                     c2 cc2.1 gF
+  c1 cc1.2       gC c3 cc3.2    gJ                                     c2 cc2.2 gG
+  c1 cc1.2       gC c3 cc3.2    gJ                                     c2 cc2.2 gH
+  c1 cc1.2       gC c3             cc3.2 gK                            c2 cc2.1 gE
+  c1 cc1.2       gC c3             cc3.2 gK                            c2 cc2.1 gF
+  c1 cc1.2       gC c3             cc3.2 gK                            c2 cc2.2 gG
+  c1 cc1.2       gC c3             cc3.2 gK                            c2 cc2.2 gH
+  c1 cc1.2                                  gD c3 cc3.1 gI             c2 cc2.1 gE
+  c1 cc1.2                                  gD c3 cc3.1 gI             c2 cc2.1 gF
+  c1 cc1.2                                  gD c3 cc3.2 gI             c2 cc2.2 gG
+  c1 cc1.2                                  gD c3 cc3.2 gI             c2 cc2.2 gH
+  c1 cc1.2                                  gD c3 cc3.1    gJ          c2 cc2.1 gE
+  c1 cc1.2                                  gD c3 cc3.1    gJ          c2 cc2.1 gF
+  c1 cc1.2                                  gD c3 cc3.2    gJ          c2 cc2.2 gG
+  c1 cc1.2                                  gD c3 cc3.2    gJ          c2 cc2.2 gH
+  c1 cc1.2                                  gD c3             cc3.2 gK c2 cc2.1 gE
+  c1 cc1.2                                  gD c3             cc3.2 gK c2 cc2.1 gF
+  c1 cc1.2                                  gD c3             cc3.2 gK c2 cc2.2 gG
+  c1 cc1.2                                  gD c3             cc3.2 gK c2 cc2.2 gH
 
   I laid them out so that the different branches are visible
 

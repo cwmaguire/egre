@@ -13,7 +13,9 @@
 -export([resend_variable_event/1]).
 -export([modify_raw_event/1]).
 -export([broadcast_raw_event/1]).
--export([type_inference/1]).
+-export([type_inference_self/1]).
+-export([type_inference_is_pid/1]).
+-export([type_inference_equals/1]).
 
 all() ->
     [no_events,
@@ -23,7 +25,8 @@ all() ->
      resend_variable_event,
      modify_raw_event,
      broadcast_raw_event,
-     type_inference].
+     type_inference_is_pid,
+     type_inference_equals].
 
 no_events(_Config) ->
     Events = egre_protocol_event_chains:get_events(?NO_EVENTS),
@@ -40,7 +43,7 @@ terminal_event(_Config) ->
                         _ActionTypeInference = []},
 
                        %% Reaction event
-                       {undefined, undefined, undefined}
+                       undefined
                       ]],
     ?assertEqual(ExpectedEvents, Events).
 
@@ -105,8 +108,8 @@ expect_event(ApiFunctionClauses) ->
                       ]],
     ?assertEqual(ExpectedEvents, Events).
 
-type_inference(_Config) ->
-    Events = egre_protocol_event_chains:get_events(?TYPE_INFERENCE),
+type_inference_self(_Config) ->
+    Events = egre_protocol_event_chains:get_events(?TYPE_INFERENCE_SELF),
     ExpectedEvents = [[<<"attack_resource">>,
                        attempt,
 
@@ -119,6 +122,56 @@ type_inference(_Config) ->
                        {{1, ghi, 2, 3},
                         [{1, <<"Pid1">>}, {2, <<"Pid3">>}, {3, <<"NotPid">>}],
                         [{1, pid}]}
+                      ]],
+    ?assertEqual(ExpectedEvents, Events).
+
+type_inference_is_pid(_Config) ->
+    Events = egre_protocol_event_chains:get_events(?TYPE_INFERENCE_IS_PID),
+    ExpectedEvents = [[<<"attack_resource">>,
+                       attempt,
+
+                       %% Action event
+                       {{1},
+                        [{1, <<"Pid1">>}],
+                        [{1, pid}]},
+
+                       %% Reaction event
+                       {{1, 2},
+                        [{1, <<"Pid1">>}, {2, <<"NotPid">>}],
+                        [{1, pid}]}
+                      ]],
+    ?assertEqual(ExpectedEvents, Events).
+
+type_inference_equals(_Config) ->
+    Events = egre_protocol_event_chains:get_events(?TYPE_INFERENCE_EQUALS),
+    ExpectedEvents = [[<<"attack_resource">>,
+                       attempt,
+
+                       %% Action event
+                       {{1, 2, 3, 4, 5},
+                        [{1, <<"Atom1">>},
+                         {2, <<"Int1">>},
+                         {3, <<"Float1">>},
+                         {4, <<"Char1">>},
+                         {5, <<"EmptyList1">>}],
+                        [{5, list},
+                         {4, char},
+                         {3, float},
+                         {2, integer},
+                         {1, atom}]},
+
+                       %% Reaction event
+                       {{1, 2, 3, 4, 5},
+                        [{1, <<"Atom2">>},
+                         {2, <<"Int2">>},
+                         {3, <<"Float2">>},
+                         {4, <<"Char2">>},
+                         {5, <<"EmptyList2">>}],
+                        [{5, list},
+                         {4, char},
+                         {3, float},
+                         {2, integer},
+                         {1, atom}]}
                       ]],
     ?assertEqual(ExpectedEvents, Events).
 
