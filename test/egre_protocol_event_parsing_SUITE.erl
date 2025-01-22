@@ -16,6 +16,9 @@
 -export([type_inference_self/1]).
 -export([type_inference_is_pid/1]).
 -export([type_inference_equals/1]).
+-export([type_inference_plus/1]).
+-export([type_inference_recursive/1]).
+-export([type_inference_event_plus/1]).
 
 all() ->
     [no_events,
@@ -26,7 +29,10 @@ all() ->
      modify_raw_event,
      broadcast_raw_event,
      type_inference_is_pid,
-     type_inference_equals].
+     type_inference_equals,
+     type_inference_plus,
+     type_inference_event_plus,
+     type_inference_recursive].
 
 no_events(_Config) ->
     Events = egre_protocol_event_chains:get_events(?NO_EVENTS),
@@ -83,6 +89,7 @@ resend_raw_event(_Config) ->
     expect_event(?RESEND_RAW_EVENT).
 
 resend_variable_event(_Config) ->
+    egre_dbg:add(egre_protocol_event_chains, reaction_events),
     expect_event(?RESEND_VARIABLE_EVENT).
 
 modify_raw_event(_Config) ->
@@ -172,6 +179,63 @@ type_inference_equals(_Config) ->
                          {3, float},
                          {2, integer},
                          {1, atom}]}
+                      ]],
+    ?assertEqual(ExpectedEvents, Events).
+
+type_inference_plus(_Config) ->
+    Events = egre_protocol_event_chains:get_events(?TYPE_INFERENCE_PLUS),
+    ExpectedEvents = [[<<"attack_resource">>,
+                       attempt,
+
+                       %% Action event
+                       {{1, 2},
+                        [{1, <<"Num1">>},
+                         {2, <<"Num2">>}],
+                        [{2, integer},
+                         {1, integer}]},
+
+                       %% Reaction event
+                       {{1},
+                        [{1, <<"Num3">>}],
+                        [{1, integer}]}
+                      ]],
+    ?assertEqual(ExpectedEvents, Events).
+
+type_inference_event_plus(_Config) ->
+    Events = egre_protocol_event_chains:get_events(?TYPE_INFERENCE_EVENT_PLUS),
+    ExpectedEvents = [[<<"attack_resource">>,
+                       attempt,
+
+                       %% Action event
+                       {{foo},
+                        [],
+                        []},
+
+                       %% Reaction event
+                       {{do, 1},
+                        [{1, <<"(Num1 + Num2)">>}],
+                        [{1, integer}]}
+                      ]],
+    ?assertEqual(ExpectedEvents, Events).
+
+type_inference_recursive(_Config) ->
+    Events = egre_protocol_event_chains:get_events(?TYPE_INFERENCE_RECURSIVE),
+    ExpectedEvents = [[<<"attack_resource">>,
+                       attempt,
+
+                       %% Action event
+                       {{1, 2},
+                        [{1, <<"Num1">>},
+                         {2, <<"Num2">>}],
+                        [{2, integer},
+                         {1, integer}]},
+
+                       %% Reaction event
+                       {{1, 2},
+                        [{1, <<"Num1">>},
+                         {2, <<"Num2">>}],
+                        [{2, integer},
+                         {1, integer}]}
                       ]],
     ?assertEqual(ExpectedEvents, Events).
 

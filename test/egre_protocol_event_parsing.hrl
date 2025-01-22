@@ -243,3 +243,71 @@
                           {var, 'Char2'},
                           {var, 'EmptyList2'}]}]}}]
             }]}}]).
+
+-define(TYPE_INFERENCE_PLUS,
+        [{{<<"attack_resource">>,attempt,1},
+          {clause,
+           [{tuple,
+             [{var, '_Map'},
+              {var,'_Props'},
+              {tuple,
+               [{var, 'Num1'},
+                {var, 'Num2'}]},
+              {var,'_Context'}]}],
+           [],
+           [{match, {var, 'Num3'}, {op, '+', {var, 'Num1'}, {var, 'Num2'}}},
+            {record, result,
+             [{record_field,
+               {atom,result},
+               {tuple,
+                [{atom,broadcast},
+                 {tuple, [{var, 'Num3'}]}]}
+              }]}]}}]).
+
+-define(TYPE_INFERENCE_EVENT_PLUS,
+        [{{<<"attack_resource">>,attempt,1},
+          {clause,
+           [{tuple,
+             [{var, '_Map'},
+              {var,'_Props'},
+              {tuple,
+               [{atom, foo}]},
+              {var,'_Context'}]}],
+           [],
+           [{match, {var, 'Event'}, {tuple, [{atom, do}, {op, '+', {var, 'Num1'}, {var, 'Num2'}}]}},
+            {record, result,
+             [{record_field,
+               {atom,result},
+               {tuple,
+                [{atom,broadcast},
+                 {var, 'Event'}]}
+              }]}]}}]).
+
+-define(TYPE_INFERENCE_RECURSIVE,
+        [{{<<"attack_resource">>,attempt,1},
+          {clause,
+           [{tuple,
+             [{var, '_Map'},
+              {var,'_Props'},
+              {tuple,
+               [{var, 'Num1'},
+                {var, 'Num2'}]},
+              {var,'_Context'}]}],
+           [],
+           [{match,
+             {var,'Foo'},
+             {call,
+              {remote,{atom,lists},{atom,keyreplace}},
+              [{atom,money},
+               {integer,1},
+               {var,'Props2'},
+               {tuple,[{atom,money},{op,'-',{var,'Num1'},{var,'Num2'}}]}]}},
+
+
+            {record, result,
+             [{record_field,
+               {atom,result},
+               {tuple,
+                [{atom,broadcast},
+                 {tuple, [{var, 'Num1'}, {var, 'Num2'}]}]}
+              }]}]}}]).
