@@ -10,6 +10,11 @@
                 type_map = #{},
                 variables = #{}}).
 
+%% FIXME
+%%  src/rules/rules_body_part_inject_self.erl: error in parse transform 'egre_protocol_parse_transform':
+%%  exception error: no function clause matching egre_protocol_event_chains:index_variable({call,{atom,self},[]},{2,[1,move,from],[{1,<<"Item">>}],[],#{}}) (src/egre_protocol_event_chains.erl, line 197)
+
+
 extract(ApiFuns) ->
   Events = get_events(ApiFuns),
   write_events(Events).

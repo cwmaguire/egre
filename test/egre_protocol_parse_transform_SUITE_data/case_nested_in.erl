@@ -16,8 +16,3 @@ attempt(_) ->
             foo
     end,
     B = 2.
-
-
-
-
-

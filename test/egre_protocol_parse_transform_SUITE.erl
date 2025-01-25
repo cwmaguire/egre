@@ -25,26 +25,33 @@
 -export([case_2_guards_2_clauses/1]).
 -export([case_2_clauses_with_2_guards_each/1]).
 -export([case_nested/1]).
+-export([case_expression_is_nested_case/1]).
+
+%all() ->
+    %[level_1_call_no_args,
+     %level_1_call_1_literal_arg,
+     %level_1_call_1_var_arg,
+     %level_2_call_no_args,
+     %level_2_call_2_var_args,
+     %level_2_call_1_fun_arg,
+     %level_2_call_with_lc,
+     %level_2_call_recursive,
+     %level_1_decouple_disjunctions,
+     %case_no_guards_1_clause,
+     %case_no_guards_2_clauses,
+     %case_1_guard_2_clauses,
+     %case_2_guards_2_clauses,
+     %case_2_clauses_with_2_guards_each,
+     %case_nested,
+     %case_expression_is_nested_case].
 
 all() ->
-    [level_1_call_no_args,
-     level_1_call_1_literal_arg,
-     level_1_call_1_var_arg,
-     level_2_call_no_args,
-     level_2_call_2_var_args,
-     level_2_call_1_fun_arg,
-     level_2_call_with_lc,
-     level_2_call_recursive,
-     level_1_decouple_disjunctions,
-     case_no_guards_1_clause,
-     case_no_guards_2_clauses,
-     case_1_guard_2_clauses,
-     case_2_guards_2_clauses,
-     case_2_clauses_with_2_guards_each,
-     case_nested].
+    [case_nested,
+     case_expression_is_nested_case].
 
 init_per_suite(Config) ->
 
+    %egre_dbg:add(egre_protocol_parse_transform, inline_form),
     %egre_dbg:add(egre_protocol_parse_transform, clause_scope_paths),
     %egre_dbg:add(egre_protocol_parse_transform, scope_paths),
     %egre_dbg:add(egre_protocol_parse_transform, body_scope_paths),
@@ -131,6 +138,54 @@ case_2_clauses_with_2_guards_each(Config) ->
 case_nested(Config) ->
     Test = case_nested,
     compare(Test, compile(Test, Config)).
+
+format({trace, _Pid, call,
+        {Mod, Fun, [Form, Acc]}}) when Mod == inline_clause; Mod == inline_form ->
+    {Acc1, Acc2, _, Acc4} = Acc,
+    NewAcc = {Acc1, Acc2, fun_map_removed, Acc4},
+
+    NewTrace = {trace, call, {Mod, Fun, [Form, NewAcc]}},
+
+    ct:pal("~p~n", [NewTrace]);
+format({trace, _Pid, return_from,
+        {M, F, A},
+        {MBin, Forms, _, Inlined}}) ->
+
+    NewTrace = {trace, return, {M, F, A}, {MBin, Forms, Inlined}},
+    ct:pal("~p~n", [NewTrace]);
+format(Other) ->
+    ct:pal("** UNRECOGNIZED TRACE MESSAGE **~n~p~n", [Other]).
+
+case_expression_is_nested_case(Config) ->
+
+    recon_trace:clear(),
+    Formatter = fun format/1,
+
+    Return = recon_trace:calls([{egre_protocol_parse_transform, body_scope_paths, return_trace},
+                               %{egre_protocol_parse_transform, clause_scope_paths, return_trace}
+                               {egre_protocol_parse_transform, cartesian_product, return_trace}
+                               ],
+                      500,
+                      [{formatter, Formatter}, {scope, local}]),
+
+    %Return = recon_trace:calls([{egre_protocol_parse_transform, inline_form, return_trace},
+                                %{egre_protocol_parse_transform, body_scope_paths, return_trace},
+                                %{egre_protocol_parse_transform, inline_clause, return_trace}],
+                      %500,
+                      %[{formatter, Formatter}, {scope, local}]),
+    ct:pal("~p:~p: Return~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Return]),
+
+    %Return2 = recon_trace:calls({egre_protocol_parse_transform, body_scope_paths, return_trace},
+                      %100,
+                      %[{formatter, Formatter}, {scope, local}]),
+    %ct:pal("~p:~p: Return2~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Return2]),
+
+    Test = case_expression_is_nested_case,
+    Result = compile(Test, Config),
+    timer:sleep(1000),
+    compare(Test, Result).
+    %compare(Test, compile(Test, Config)),
+
 
 compare(_Test, {Same, Same}) ->
     ok;
