@@ -239,6 +239,10 @@ body_scope_paths({'case', Expr, Clauses}, ScopePaths) ->
                                               NewScopePath <- NewCaseScopePaths],
             CartesianProduct
     end;
+body_scope_paths({tuple, []}, []) ->
+    [[{tuple, []}]];
+body_scope_paths({tuple, []}, ScopePaths) ->
+    [ScopePath ++ [{tuple, []}] || ScopePath <- ScopePaths];
 body_scope_paths({tuple, Items}, ScopePaths) ->
     ItemScopePaths = [body_scope_paths(I, []) || I <- Items],
     ElementLists = lists:foldl(fun cartesian_product/2, [], ItemScopePaths),
