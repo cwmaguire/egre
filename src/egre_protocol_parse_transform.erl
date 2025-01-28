@@ -229,7 +229,7 @@ body_scope_paths({'case', Expr, Clauses}, ScopePaths) ->
     NewExprPaths = lists:foldl(fun body_scope_paths/2, [], [Expr]),
     NewScopePaths = lists:foldl(fun clause_scope_paths/2, [], Clauses),
     NewCaseScopePaths =
-        [[{'case', ExprPath, [NewScopePath]}] || ExprPath <- NewExprPaths, NewScopePath <- NewScopePaths],
+        [[{'case', ExprPath, [NewScopePath]}] || [ExprPath] <- NewExprPaths, NewScopePath <- NewScopePaths],
     case ScopePaths of
         [] ->
             NewCaseScopePaths;
@@ -253,7 +253,7 @@ body_scope_paths({match, Expr1, Expr2}, ScopePaths) ->
     NewExpr1Paths = lists:foldl(fun body_scope_paths/2, [], [Expr1]),
     NewExpr2Paths = lists:foldl(fun body_scope_paths/2, [], [Expr2]),
     NewMatchScopePaths =
-        [[{match, Expr1Path, Expr2Path}] || Expr1Path <- NewExpr1Paths, Expr2Path <- NewExpr2Paths],
+        [[{match, Expr1Path, Expr2Path}] || [Expr1Path] <- NewExpr1Paths, [Expr2Path] <- NewExpr2Paths],
     case ScopePaths of
         [] ->
             NewMatchScopePaths;
