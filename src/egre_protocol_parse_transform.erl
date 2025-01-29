@@ -90,7 +90,13 @@ inline_api_disjunction(Module, {clause, Args, MaybeConjunction, Forms}, Funs) ->
 inline_form(Form = {call, {atom, ErlangFun}, _CallArgs},
             {Module, Forms, Funs, InlinedFuns})
   when ErlangFun == throw;
-       ErlangFun == self ->
+       ErlangFun == self;
+       ErlangFun == integer_to_binary;
+       ErlangFun == make_ref;
+       ErlangFun == atom_to_binary;
+       ErlangFun == min;
+       ErlangFun == tuple_to_list;
+       ErlangFun == list_to_tuple ->
     {Module, Forms ++ [Form], Funs, InlinedFuns};
 inline_form(Form = {call, {atom, FunName}, CallArgs},
             {Module, Forms, Funs, InlinedFuns}) ->
@@ -123,7 +129,7 @@ inline_form({lc, Body, Generators},
         inline_form(Body, {Module, [], Funs, InlinedFuns}),
 
     {Module, GeneratorForms, _, InlinedFuns3} =
-        lists:foldl(fun inline_lc_generator/2,
+        lists:foldl(fun inline_lc_expression/2,
                     {Module, [], Funs, InlinedFuns2},
                     Generators),
 
@@ -158,12 +164,15 @@ inline_form(Form, {Module, Forms, Funs, InlinedFuns})
 inline_form(Form, {Module, Forms, Funs, InlinedFuns}) ->
     {Module, Forms ++ [Form], Funs, InlinedFuns}.
 
-inline_lc_generator({generate, Bindings, Expression},
+inline_lc_expression({generate, Bindings, Expression},
                     {Module, Forms, Funs, InlinedFuns}) ->
     {Module, [Expression2], _Funs, InlinedFuns2} =
         inline_form(Expression, {Module, [], Funs, InlinedFuns}),
     Generator = {generate, Bindings, Expression2},
-    {Module, Forms ++ [Generator], Funs, InlinedFuns2}.
+    {Module, Forms ++ [Generator], Funs, InlinedFuns2};
+inline_lc_expression(Form,
+                    {Module, Forms, Funs, InlinedFuns}) ->
+    {Module, Forms ++ [Form], Funs, InlinedFuns}.
 
 inline_clause({clause, Args, Guards, Body},
               {Module, Forms, Funs, InlinedFuns}) ->
