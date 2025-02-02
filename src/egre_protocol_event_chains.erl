@@ -16,14 +16,25 @@
 
 
 extract(ApiFuns) ->
-  Events = get_events(ApiFuns),
-  write_events(Events).
+    egre_dbg:add(egre_protocol_event_chains, indexed_event),
+    Events = get_events(ApiFuns),
+    write_events(Events).
 
 get_events(ApiClauses) ->
     lists:foldl(fun get_event_pairs/2, [], ApiClauses).
 
-write_events(_) ->
-    ok.
+write_events(Events) ->
+    {ok, IO} = file:open("events", [write, append]),
+    [write_event(E, IO) || E <- Events],
+    file:close(IO).
+
+%{Mod, Fun,
+             %{EventIn, VarsIn, TypesIn},
+             %{EventOut, VarsOut, TypesOut}}
+
+write_event(X, IO) ->
+    Bin = io_lib:format("~p~n~n", [X]),
+    file:write(IO, Bin).
 
 get_event_pairs({_K, {clause, [{var, '_'}], _, _}}, Events) ->
     Events;
@@ -32,7 +43,7 @@ get_event_pairs({{Module, attempt, ?API_FUNCTION_ARITY}, {clause, Arguments, Con
     TypeMap = lists:foldl(fun type_inference/2, #{}, Conjunction),
     State = #state{type_map = TypeMap},
 
-    [{tuple, [_CustomData, _Props, Event, _Context]}] = Arguments,
+    Event = event(Arguments),
 
     {ReactionEvents, TypeMap3} =
         case lists:foldl(fun reaction_events/2, State, Body) of
@@ -53,6 +64,16 @@ get_event_pairs({{Module, attempt, ?API_FUNCTION_ARITY}, {clause, Arguments, Con
 get_event_pairs({{_Module, _Function, _}, {clause, _Bindings, _Guards, _Body}}, Events) ->
     Events.
 
+event([{match, _, {tuple, [_, _, {var, Event}, _]}}]) ->
+    case atom_to_list(Event) of
+        [$_ | _] ->
+            {var, '_'};
+        _ ->
+            {var, Event}
+    end;
+event([{tuple, [_, _, Event, _]}]) ->
+    Event.
+
 type_inference({op, '==', Operand1, {var, Var}}, TypeMap) ->
     type_inference( {op, '==', {var, Var}, Operand1}, TypeMap);
 type_inference({op, '==', {var, Var}, Operand1}, TypeMap) ->
@@ -71,8 +92,8 @@ type_inference({match, {var, Var1}, {var, Var2}}, TypeMap) ->
         _ ->
             TypeMap
     end;
-type_inference(Other, TypeMap) ->
-    ct:pal("~p:~p: Other~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Other]),
+type_inference(_Other, TypeMap) ->
+    %ct:pal("~p:~p: Other~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Other]),
     TypeMap.
 
 type_inference_equals({call, {atom, self}, []}) ->
@@ -142,6 +163,14 @@ reaction_events({match, {var, Var}, Value = {tuple, _}},
     %
     % e.g. [{1, <<"Character">>}, {2, <<"proplists:get_value(a, List)">>}]
     State#state{variables = Variables#{Var => Value}};
+reaction_events({match, {var, Var},
+                 Case = {'case', _, [{clause, _, _, ClauseExprs}]}},
+                State = #state{variables = Variables}) ->
+    State2 = reaction_events(Case, State),
+    LastClauseExpr = hd(lists:reverse(ClauseExprs)),
+    Variables2 = Variables#{Var => LastClauseExpr},
+    State2#state{variables = Variables2};
+
 reaction_events({op, Op, {var, Var1}, {var, Var2}},
                 State = #state{type_map = TypeMap})
   when Op == '+';
@@ -181,7 +210,13 @@ maybe_result_record_field_event({record_field,
 maybe_result_record_field_event(_, State) ->
     State.
 
+indexed_event({var, '_'}, _) ->
+    {[], #{}, #{}};
+indexed_event({match, {var, _IgnoredVar}, Event}, State) ->
+    indexed_event(Event, State);
 indexed_event({var, EventVar}, State = #state{variables = Variables}) ->
+    %io:format(user, "EventVar = ~p~n", [EventVar]),
+    %io:format(user, "State = ~p~n", [State]),
     #{EventVar := Event} = Variables,
     indexed_event(Event, State);
 indexed_event({tuple, Event}, #state{type_map = TypeMap}) ->
@@ -198,6 +233,8 @@ indexed_event({tuple, Event}, #state{type_map = TypeMap}) ->
         lists:foldl(fun index_variable/2, Acc, Event),
     IndexedEventTuple = list_to_tuple(IndexedEvent),
     {IndexedEventTuple, IndexedVariables, IndexedTypes}.
+
+% {call,{atom,self},[]},{2,[1,move,from],[{1,<<"Item">>}],[],#{}}
 
 index_variable({var, Var}, {Index, Event, IndexedVariables, Types, TypeMap}) ->
     Types2 =
@@ -225,4 +262,68 @@ index_variable({op, Op, {var, Var1}, {var, Var2}}, {Index, Event, IndexedVariabl
      [{Index, integer} | Types],
      TypeMap#{Var1 => integer, Var2 => integer}};
 index_variable({atom, Atom}, {Index, Event, IndexedVariables, Types, TypeMap}) ->
-    {Index, Event ++ [Atom], IndexedVariables, Types, TypeMap}.
+    {Index,
+     Event ++ [Atom],
+     IndexedVariables,
+     Types,
+     TypeMap};
+index_variable({match, {var, Var}, {record, RecordType, _Fields}},
+               {Index, Event, IndexedVariables, Types, TypeMap}) ->
+    BinVar = atom_to_binary(Var),
+    {Index + 1,
+     Event ++ [Index],
+     IndexedVariables ++ [{Index, <<BinVar/binary>>}],
+     [{Index, RecordType} | Types],
+     TypeMap};
+
+index_variable({call, {atom, self}, []}, {Index, Event, IndexedVariables, Types, TypeMap}) ->
+    {Index + 1,
+     Event ++ [Index],
+     IndexedVariables ++ [{Index, <<"self()">>}],
+     [{Index, pid} | Types],
+     TypeMap};
+index_variable({match, {var, Var}, {atom, _}},
+               {Index, Event, IndexedVariables, Types, TypeMap}) ->
+    BinVar = atom_to_binary(Var),
+    {Index + 1,
+     Event ++ [Index],
+     IndexedVariables ++ [{Index, BinVar}],
+     [{Index, atom} | Types],
+     TypeMap};
+index_variable({tuple, Exprs},
+               Acc = {_, Event, _, _, _}) ->
+    {NextIdx,
+     IndexedTuple,
+     IndexedVariables2,
+     IndexedTypes,
+     TypeInf} =
+        lists:foldl(fun index_variable/2, Acc, Exprs),
+
+    {NextIdx,
+     Event ++ [list_to_tuple(IndexedTuple)],
+     IndexedVariables2,
+     IndexedTypes,
+     TypeInf};
+index_variable({cons, {var, Var1}, {var, Var2}},
+               {Index, Event, IndexedVariables, Types, TypeMap}) ->
+    BinVar1 = atom_to_binary(Var1),
+    BinVar2 = atom_to_binary(Var2),
+    {Index + 1,
+     Event ++ [Index],
+     IndexedVariables ++ [{Index, <<"[", BinVar1/binary, " | ", BinVar2/binary, "]">>}],
+     [{Index, list} | Types],
+     TypeMap};
+index_variable({bin, _},
+               {Index, Event, IndexedVariables, Types, TypeMap}) ->
+    {Index + 1,
+     Event ++ [Index],
+     IndexedVariables ++ [{Index, <<"<binary>">>}],
+     [{Index, bin} | Types],
+     TypeMap};
+index_variable({nil},
+               {Index, Event, IndexedVariables, Types, TypeMap}) ->
+    {Index + 1,
+     Event ++ [Index],
+     IndexedVariables ++ [{Index, <<"[]">>}],
+     [{Index, list} | Types],
+     TypeMap}.
