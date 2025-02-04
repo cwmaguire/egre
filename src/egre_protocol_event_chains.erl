@@ -2,6 +2,8 @@
 
 -export([chains/0]).
 
+-define(INDENT, "  ").
+
 chains() ->
     egre_dbg:add(egre_protocol_event_chains, chains_),
     Data = read_data(),
@@ -54,7 +56,7 @@ print([Pair | Rest], IO, Indent) ->
     print(Rest, IO, increase_indent(Indent)).
 
 increase_indent(Indent) ->
-    <<Indent/binary, "  ">>.
+    <<Indent/binary, ?INDENT>>.
 
 serialize({Mod, Fun, AE, RE}, Indent) ->
     FunBin = atom_to_binary(Fun),
@@ -62,10 +64,11 @@ serialize({Mod, Fun, AE, RE}, Indent) ->
     {ReactionBin, ReactionVars} = serialize_event(RE),
     SpaceSize = 1,
     ColonSize = 1,
+    NextIndent = [Indent, <<?INDENT>>],
     Padding = list_to_binary(string:pad("", size(Mod) + ColonSize + size(FunBin) + SpaceSize)),
     [FunBin, <<":">>, Mod, <<" ">>,
      ActionBin, <<" ->                  ">> , ActionVars, <<"\n">>,
-     Indent, Padding,
+     NextIndent, Padding,
      ReactionBin,  <<"                  ">>, ReactionVars].
 
 serialize_event(undefined) ->
