@@ -16,7 +16,7 @@
 
 
 extract(ApiFuns) ->
-    egre_dbg:add(egre_protocol_event_chains, indexed_event),
+    egre_dbg:add(egre_protocol_event_chains, get_event_pairs),
     Events = get_events(ApiFuns),
     write_events(Events).
 
@@ -38,12 +38,14 @@ write_event(X, IO) ->
 
 get_event_pairs({_K, {clause, [{var, '_'}], _, _}}, Events) ->
     Events;
-get_event_pairs({{Module, attempt, ?API_FUNCTION_ARITY}, {clause, Arguments, Conjunction, Body}},
-          Events) ->
+get_event_pairs({{Module, Function, ?API_FUNCTION_ARITY}, {clause, Arguments, Conjunction, Body}},
+          Events)
+  when Function == attempt;
+       Function == succeed ->
     TypeMap = lists:foldl(fun type_inference/2, #{}, Conjunction),
     State = #state{type_map = TypeMap},
 
-    Event = event(Arguments),
+    Event = event(Function, Arguments),
 
     {ReactionEvents, TypeMap3} =
         case lists:foldl(fun reaction_events/2, State, Body) of
@@ -59,19 +61,21 @@ get_event_pairs({{Module, attempt, ?API_FUNCTION_ARITY}, {clause, Arguments, Con
         {_IndexedEvent, _IndexedVariables, _IndexedTypes} =
             indexed_event(Event, State#state{type_map = TypeMap3}),
 
-    NewEvents = [[Module, attempt, ActionEvent, ReactionEvent] || ReactionEvent <- ReactionEvents],
+    NewEvents = [[Module, Function, ActionEvent, ReactionEvent] || ReactionEvent <- ReactionEvents],
     Events ++ NewEvents;
 get_event_pairs({{_Module, _Function, _}, {clause, _Bindings, _Guards, _Body}}, Events) ->
     Events.
 
-event([{match, _, {tuple, [_, _, {var, Event}, _]}}]) ->
+event(attempt, [{match, _, {tuple, [_, _, {var, Event}, _]}}]) ->
     case atom_to_list(Event) of
         [$_ | _] ->
             {var, '_'};
         _ ->
             {var, Event}
     end;
-event([{tuple, [_, _, Event, _]}]) ->
+event(attempt, [{tuple, [_, _, Event, _]}]) ->
+    Event;
+event(succeed, [{tuple, [_Props, Event, _Context]}]) ->
     Event.
 
 type_inference({op, '==', Operand1, {var, Var}}, TypeMap) ->
