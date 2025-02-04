@@ -40,16 +40,55 @@ chains_([C = [{_, _, _, {E, _, Ts}} | _] | Live], Dead, Data) ->
     end.
 
 print(Chain) ->
-    print(Chain, _Indent = <<>>).
+    {ok, IO} = file:open("egre_protocol_chains", [write]),
+    print(Chain, IO, _Indent = <<>>),
+    ok = file:close(IO).
 
-print([], _) ->
+print([], _, _) ->
     ok;
-print([Pair | Rest], Indent) ->
-    Bin = serialize(Pair),
-    Output = <<Indent/binary, Bin/binary>>,
-    io:format("~p~n", [Output]),
-    print(Rest, <<Indent/binary, "  ">>).
+print([Pair | Rest], IO, Indent) ->
+    IoList = serialize(Pair, Indent),
+    Output = [Indent, IoList, <<"\n">>],
+    io:format("~w~n", [Output]),
+    file:write(IO, Output),
+    print(Rest, IO, increase_indent(Indent)).
 
-serialize({Mod, Fun, {AE, AV, AT}, {RE, RV, RT}}) ->
-    % TODO actually serialize this stuff
-    <<"">>.
+increase_indent(Indent) ->
+    <<Indent/binary, "  ">>.
+
+serialize({Mod, Fun, AE, RE}, Indent) ->
+    FunBin = atom_to_binary(Fun),
+    {ActionBin, ActionVars} = serialize_event(AE),
+    {ReactionBin, ReactionVars} = serialize_event(RE),
+    SpaceSize = 1,
+    ColonSize = 1,
+    Padding = list_to_binary(string:pad("", size(Mod) + ColonSize + size(FunBin) + SpaceSize)),
+    [FunBin, <<":">>, Mod, <<" ">>,
+     ActionBin, <<" ->                  ">> , ActionVars, <<"\n">>,
+     Indent, Padding,
+     ReactionBin,  <<"                  ">>, ReactionVars].
+
+serialize_event(undefined) ->
+    {<<"no reaction">>, <<"">>};
+serialize_event({Event, Vars, Types}) ->
+    EventBins = [to_bin(E) || E <- tuple_to_list(Event)],
+    %EventBin = [<<"{">>, lists:join(<<" ">>, EventBins), <<"}">>],
+    EventBin = lists:join(<<" ">>, EventBins),
+    VarBins = [[to_bin(Idx), <<":">>, V] || {Idx, V} <- Vars],
+    VarBin = lists:join(<<", ">>, VarBins),
+    TypeBins = [to_bin(T) || {_I, T} <- Types],
+    TypeBin =
+        case TypeBins of
+            [] ->
+                <<" (No Types)">>;
+            _ ->
+                [<<" [">>, lists:join(<<" ">>, TypeBins), <<"]">>]
+        end,
+    {[<<"{">>, EventBin, <<", ">>, TypeBin, <<"}">>], VarBin}.
+
+to_bin(I) when is_integer(I) ->
+    integer_to_binary(I);
+to_bin(A) when is_atom(A) ->
+    atom_to_binary(A).
+%to_bin(V) when is_binary(V) ->
+    %V.
