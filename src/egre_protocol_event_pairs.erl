@@ -16,7 +16,7 @@
 
 
 extract(ApiFuns) ->
-    egre_dbg:add(egre_protocol_event_chains, get_event_pairs),
+    %egre_dbg:add(egre_protocol_event_chains, get_event_pairs),
     Events = get_events(ApiFuns),
     write_events(Events).
 
@@ -27,17 +27,9 @@ write_events([]) ->
     io:format("No events~n");
 write_events(Events = [[Module | _] | _]) ->
     {ok, IO} = file:open(<<"events/", Module/binary, "_events.bert">>, [write, append]),
-    %[write_event(E, IO) || E <- Events],
     file:write(IO, term_to_binary(Events)),
     file:close(IO).
 
-%{Mod, Fun,
-             %{EventIn, VarsIn, TypesIn},
-             %{EventOut, VarsOut, TypesOut}}
-
-%write_event(X, IO) ->
-    %Bin = io_lib:format("~p~n~n", [X]),
-    %file:write(IO, Bin).
 
 get_event_pairs({_K, {clause, [{var, '_'}], _, _}}, Events) ->
     Events;
