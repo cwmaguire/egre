@@ -10,7 +10,7 @@
 
 parse_transform(Forms, _Options) ->
     InlinedApiFunctions = inline_flatten(Forms),
-    egre_protocol_event_chains:extract(InlinedApiFunctions),
+    egre_protocol_event_pairs:extract(InlinedApiFunctions),
     Forms.
 
 inline_flatten([FilenameAttribute | Forms]) ->
