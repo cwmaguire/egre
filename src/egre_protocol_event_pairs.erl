@@ -193,14 +193,18 @@ reaction_events({match, {var, Var},
     LastClauseExpr = hd(lists:reverse(ClauseExprs)),
     Variables2 = Variables#{Var => LastClauseExpr},
     State2#state{variables = Variables2};
-
+reaction_events({match, {var, Var},
+                 {call,
+                  {remote, {atom, 'proplists'}, {atom, 'get_value'}},
+                  [_, _, {integer, _}]}},
+                State = #state{type_map = TypeMap}) ->
+    State#state{type_map = TypeMap#{Var => integer}};
 reaction_events({op, Op, {var, Var1}, {var, Var2}},
                 State = #state{type_map = TypeMap})
   when Op == '+';
        Op == '-' ->
     State#state{type_map = TypeMap#{Var1 => integer,
                                     Var2 => integer}};
-
 reaction_events(Form, State) when is_tuple(Form) ->
     List = tuple_to_list(Form),
     reaction_events(List, State);
