@@ -142,6 +142,16 @@ reaction_events({call,
                 State = #state{events = Events}) ->
     ReactionEvent = indexed_event(Event, State),
     State#state{events = [ReactionEvent | Events]};
+reaction_events({call,
+                 {remote,
+                  {atom, egre},
+                  {atom, attempt_after}},
+                 [_TickTime,
+                  _Target,
+                  Event]},
+                State = #state{events = Events}) ->
+    ReactionEvent = indexed_event(Event, State),
+    State#state{events = [ReactionEvent | Events]};
 reaction_events({record, result, RecordFields},
                 State) ->
     maybe_result_record_event(RecordFields, State);
