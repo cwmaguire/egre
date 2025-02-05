@@ -59,8 +59,13 @@ get_event_pairs({{Module, Function, ?API_FUNCTION_ARITY}, {clause, Arguments, Co
         {_IndexedEvent, _IndexedVariables, _IndexedTypes} =
             indexed_event(Event, State#state{type_map = TypeMap3}),
 
-    NewEvents = [[Module, Function, ActionEvent, ReactionEvent] || ReactionEvent <- ReactionEvents],
-    Events ++ NewEvents;
+    case ActionEvent of
+        {[], _, _} ->
+            Events;
+        _ ->
+            NewEvents = [[Module, Function, ActionEvent, ReactionEvent] || ReactionEvent <- ReactionEvents],
+            Events ++ NewEvents
+    end;
 get_event_pairs({{_Module, _Function, _}, {clause, _Bindings, _Guards, _Body}}, Events) ->
     Events.
 
@@ -217,16 +222,27 @@ maybe_result_record_field_event({record_field,
 maybe_result_record_field_event(_, State) ->
     State.
 
+% {match,{var,'_Active'},{cons,{var,'_'},{var,'_'}}}
 
 indexed_event({var, '_'}, _) ->
     {[], #{}, #{}};
-indexed_event({match, {var, _IgnoredVar}, Event}, State) ->
-    indexed_event(Event, State);
+indexed_event({match, {var, MaybeIgnored}, Event},
+              State = #state{variables = Variables}) ->
+    case atom_to_list(MaybeIgnored) of
+        [$_ | _] ->
+            indexed_event(Event, State);
+        _ ->
+            indexed_event(Event, State#state{variables = Variables#{MaybeIgnored => Event}})
+    end;
 indexed_event({var, EventVar}, State = #state{variables = Variables}) ->
     %io:format(user, "EventVar = ~p~n", [EventVar]),
     %io:format(user, "State = ~p~n", [State]),
-    #{EventVar := Event} = Variables,
-    indexed_event(Event, State);
+    case Variables of
+        #{EventVar := Event} ->
+            indexed_event(Event, State);
+        _ ->
+            {[], #{}, #{}}
+    end;
 indexed_event({tuple, Event}, #state{type_map = TypeMap}) ->
     Acc = {1,
            _Event = [],
@@ -240,7 +256,17 @@ indexed_event({tuple, Event}, #state{type_map = TypeMap}) ->
      _TypeInf} =
         lists:foldl(fun index_variable/2, Acc, Event),
     IndexedEventTuple = list_to_tuple(IndexedEvent),
-    {IndexedEventTuple, IndexedVariables, IndexedTypes}.
+    {IndexedEventTuple, IndexedVariables, IndexedTypes};
+indexed_event({call, {atom, Fun}, [{var, Var}]}, _State) ->
+    VarBin = atom_to_binary(Var),
+    {{Fun, '(', 1, ')'}, [{1, VarBin}], []}.
+
+index_variable({integer, Int}, {Index, Event, IndexedVariables, Types, TypeMap}) ->
+    {Index + 1,
+     Event ++ [Index],
+     IndexedVariables ++ [{Index, integer_to_binary(Int)}],
+     [{Index, integer} | Types],
+     TypeMap};
 index_variable({var, Var}, {Index, Event, IndexedVariables, Types, TypeMap}) ->
     Types2 =
         case TypeMap of
@@ -302,6 +328,29 @@ index_variable({match, {var, Var}, {nil}},
      IndexedVariables ++ [{Index, <<VarBin/binary, " = []">>}],
      [{Index, list} | Types],
      TypeMap};
+index_variable({match, {var, Var}, Cons = {cons, _, _}},
+               {Index, Event, IndexedVariables, Types, TypeMap}) ->
+    VarBin = atom_to_binary(Var),
+    ConsBin = serialize_cons(Cons),
+    {Index + 1,
+     Event ++ [Index],
+     IndexedVariables ++ [{Index, <<VarBin/binary, " = ", ConsBin/binary>>}],
+     [{Index, list} | Types],
+     TypeMap};
+
+%{match,{var,'_Phrase'},
+       %{bin,[{bin_element,{string,"quest "},default,default},
+             %{bin_element,{var,'QuestName'},default,[binary]}]}}
+
+index_variable({match, {var, Var}, {bin, _}},
+               {Index, Event, IndexedVariables, Types, TypeMap}) ->
+    VarBin = atom_to_binary(Var),
+    {Index + 1,
+     Event ++ [Index],
+     IndexedVariables ++ [{Index, <<VarBin/binary, " = <binary>">>}],
+     [{Index, list} | Types],
+     TypeMap};
+
 index_variable({tuple, Exprs},
                Acc = {_, Event, _, _, _}) ->
     {NextIdx,
@@ -315,6 +364,7 @@ index_variable({tuple, Exprs},
      IndexedVariables2,
      IndexedTypes,
      TypeInf};
+%% TODO use {cons, _, _} logic, since this is a subset of that
 index_variable({cons, {var, Var1}, {var, Var2}},
                {Index, Event, IndexedVariables, Types, TypeMap}) ->
     BinVar1 = atom_to_binary(Var1),
@@ -326,7 +376,7 @@ index_variable({cons, {var, Var1}, {var, Var2}},
      TypeMap};
 index_variable(Cons = {cons, _, _},
                {Index, Event, IndexedVariables, Types, TypeMap}) ->
-    ConsBin = serialize_cons(Cons, <<>>),
+    ConsBin = serialize_cons(Cons),
     {Index + 1,
      Event ++ [Index],
      IndexedVariables ++ [{Index, ConsBin}],
@@ -347,23 +397,17 @@ index_variable({nil},
      [{Index, list} | Types],
      TypeMap}.
 
-% egre_protocol_event_pairs:indexed_event({tuple,[{call,{atom,self},[]},
-%         {atom,quests},
-%         {atom,for},
-%         {var,'Player'},
-%         {var,'PlayerName'},
-%         {var,'QuestNames'},
-%         {match,{var,'_AlreadyActive'},{nil}}]},{state,[],#{},#{}})
 
-%{cons,
-% {bin,[{bin_element,{var,'Context'},default,[binary]}]},
-% {cons,{var,'Description'},{nil}}}]}]}]}]}]}]}},
-%
-% [<<Context/binary>>, Description]     / [<<Context/binary>> | [Description | []]]
+serialize_cons(Cons) ->
+    serialize_cons(Cons, <<>>).
 
 serialize_cons({cons, X, {nil}}, Bin) ->
     XBin = serialize(X),
     <<"[", Bin/binary, ", ", XBin/binary, "]">>;
+serialize_cons({cons, X, Y = {var, _}}, Bin) ->
+    XBin = serialize(X),
+    YBin = serialize(Y),
+    <<"[", Bin/binary, ", ", XBin/binary, " | ", YBin/binary, "]">>;
 serialize_cons({cons, X, Rest}, Bin) ->
     XBin = serialize(X),
     Bin2 = <<Bin/binary, ", ", XBin/binary>>,
