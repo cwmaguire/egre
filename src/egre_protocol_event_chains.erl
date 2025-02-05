@@ -3,32 +3,46 @@
 -export([chains/0]).
 
 -define(INDENT, "  ").
+-define(INFINITE_LOOP, [_Tail = {_Mod, _Fun, _ActionEvent = {E, _, Ts}, _ReactionEvent = {E, _, Ts}} | _]).
+-define(DEAD_END, [{_, _, _, undefined} | _]).
 
 chains() ->
     egre_dbg:add(egre_protocol_event_chains, chains_),
-    Data = read_data(),
-    io:format(user, "Data = ~p~n", [Data]),
-    ReactionEvents = [{E, Types} || {_, _, _, {E, _, Types}} <- Data],
-    %io:format(user, "ReactionEvents = ~p~n", [ReactionEvents]),
-    Chains0 = [[Pair] || Pair = {_, _, {E, _, Types}, _} <- Data,
-                          not lists:member({E, Types}, ReactionEvents)],
-    %io:format(user, "Chains0 = ~p~n", [Chains0]),
-    Chains = chains_(Chains0, _DeadChains = [], Data),
-    [print(Chain) || Chain <- Chains],
-    io:format(user, "Chains = ~p~n", [Chains]).
+    Pairs = read_pairs(),
+    write_pairs(Pairs),
+    ChainHeads = chain_heads(Pairs),
+    Chains = chains_(ChainHeads, _DeadChains = [], Pairs),
+    [print(Chain) || Chain <- Chains].
+    %io:format(user, "Chains = ~p~n", [Chains]).
 
-read_data() ->
+chain_heads(Data) ->
+    ReactionEvents = [{E, Types} || {_, _, _, {E, _, Types}} <- Data],
+    [[Pair] || Pair = {_, _, {E, _, Types}, _} <- Data,
+               not lists:member({E, Types}, ReactionEvents)].
+
+read_pairs() ->
     filelib:fold_files("events", ~S".*\.bert", false, fun read_file/2, _Data = []).
 
 read_file(Filename, Pairs) ->
     {ok, Binary} = file:read_file(Filename, [read]),
     PairList = binary_to_term(Binary),
-    io:format(user, "Term = ~p~n", [PairList]),
+    %io:format(user, "Term = ~p~n", [PairList]),
     Pairs ++ [list_to_tuple(P) || P <- PairList].
+
+write_pairs(Pairs) ->
+    {ok, IO} = file:open("pairs", [write]),
+    [write_pair(P, IO) || P <- Pairs],
+    ok = file:close(IO).
+
+write_pair(Pair, IO) ->
+    Chars = io_lib:format("~p~n", [Pair]),
+    file:write(IO, Chars).
 
 chains_(_Live = [], Dead, _Data) ->
     Dead;
-chains_([C = [{_, _, _, undefined} | _] | Live], Dead, Data) ->
+chains_([C = ?DEAD_END | Live], Dead, Data) ->
+    chains_(Live, [lists:reverse(C) | Dead], Data);
+chains_([C = ?INFINITE_LOOP | Live], Dead, Data) ->
     chains_(Live, [lists:reverse(C) | Dead], Data);
 chains_([C = [{_, _, _, {E, _, Ts}} | _] | Live], Dead, Data) ->
     LinkedPairs = [P || P = {_, _, {E2, _, Ts2}, _} <- Data,
@@ -51,7 +65,7 @@ print([], _, _) ->
 print([Pair | Rest], IO, Indent) ->
     IoList = serialize(Pair, Indent),
     Output = [Indent, IoList, <<"\n">>],
-    io:format("~w~n", [Output]),
+    %io:format("~w~n", [Output]),
     file:write(IO, Output),
     print(Rest, IO, increase_indent(Indent)).
 
@@ -93,5 +107,3 @@ to_bin(I) when is_integer(I) ->
     integer_to_binary(I);
 to_bin(A) when is_atom(A) ->
     atom_to_binary(A).
-%to_bin(V) when is_binary(V) ->
-    %V.
