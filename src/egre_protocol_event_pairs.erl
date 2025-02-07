@@ -414,6 +414,13 @@ index_variable(Cons = {cons, _, _},
      IndexedVariables ++ [{Index, ConsBin}],
      [{Index, list} | Types],
      TypeMap};
+index_variable({'case', _Expr, _Clauses},
+               {Index, Event, IndexedVariables, Types, TypeMap}) ->
+    {Index + 1,
+     Event ++ [Index],
+     IndexedVariables ++ [{Index, <<"case">>}],
+     [{Index, 'case'} | Types],
+     TypeMap};
 index_variable({bin, _},
                {Index, Event, IndexedVariables, Types, TypeMap}) ->
     {Index + 1,
