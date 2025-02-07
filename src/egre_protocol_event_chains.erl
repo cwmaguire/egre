@@ -7,7 +7,7 @@
 -define(DEAD_END, [{_, _, _, undefined} | _]).
 
 chains() ->
-    egre_dbg:add(egre_protocol_event_chains, chains_),
+    %egre_dbg:add(egre_protocol_event_chains, serialize),
     Pairs = read_pairs(),
     write_pairs(Pairs),
     ChainHeads = chain_heads(Pairs),
@@ -64,7 +64,7 @@ print(Chain) ->
 print([], _, _) ->
     ok;
 print([Pair | Rest], IO, Indent) ->
-    IoList = serialize(Pair, Indent),
+    IoList = serialize_pair(Pair, Indent),
     Output = [Indent, IoList, <<"\n">>],
     %io:format("~w~n", [Output]),
     file:write(IO, Output),
@@ -73,7 +73,7 @@ print([Pair | Rest], IO, Indent) ->
 increase_indent(Indent) ->
     <<Indent/binary, ?INDENT>>.
 
-serialize({Mod, Fun, AE, RE}, Indent) ->
+serialize_pair({Mod, Fun, AE, RE}, Indent) ->
     FunBin = atom_to_binary(Fun),
     {ActionBin, ActionVars} = serialize_event(AE),
     {ReactionBin, ReactionVars} = serialize_event(RE),
@@ -107,4 +107,6 @@ serialize_event({Event, Vars, Types}) ->
 to_bin(I) when is_integer(I) ->
     integer_to_binary(I);
 to_bin(A) when is_atom(A) ->
-    atom_to_binary(A).
+    atom_to_binary(A);
+to_bin(T) when is_tuple(T) ->
+    [<<"{">>, [to_bin(E) || E <- tuple_to_list(T)], <<"}">>].
