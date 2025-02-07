@@ -9,6 +9,7 @@
 %% is_owner/2 and describe/4 are not being inlined
 
 parse_transform(Forms, _Options) ->
+    %egre_dbg:add(egre_protocol_parse_transform, inline_form),
     InlinedApiFunctions = inline_flatten(Forms),
     egre_protocol_event_pairs:extract(InlinedApiFunctions),
     Forms.
@@ -150,6 +151,13 @@ inline_form({'case', Expression, Clauses},
     Case = {'case', InlinedExpression, Clauses2},
     {Module, Forms ++ [Case], Funs, InlinedFuns3};
 
+inline_form({tuple, Elements}, {Module, Forms, Funs, InlinedFuns}) ->
+    {Module, SubForms2, _Funs, InlinedFuns2} =
+        lists:foldl(fun inline_form/2,
+                    {Module, [], Funs, InlinedFuns},
+                    Elements),
+    Form2 = {tuple, SubForms2},
+    {Module, Forms ++ [Form2], Funs, InlinedFuns2};
 inline_form(Form, {Module, Forms, Funs, InlinedFuns})
   when is_tuple(Form) ->
     SubForms = tuple_to_list(Form),
@@ -159,7 +167,6 @@ inline_form(Form, {Module, Forms, Funs, InlinedFuns})
                     {Module, [], Funs, InlinedFuns},
                     SubForms),
     Form2 = list_to_tuple(SubForms2),
-
     {Module, Forms ++ [Form2], Funs, InlinedFuns2};
 inline_form(Form, {Module, Forms, Funs, InlinedFuns}) ->
     {Module, Forms ++ [Form], Funs, InlinedFuns}.
@@ -193,14 +200,6 @@ inline_case_clause({clause, Expression, Guards, Body},
     Clause = {clause, Expression, Guards, Body2},
     {Module, Forms ++ [Clause], Funs, InlinedFuns2}.
 
-% clause({clause,Anno,H0,G0,B0}) ->
-%     H1 = head(H0),
-%     G1 = guard(G0),
-%     B1 = exprs(B0),
-%     {clause,H1,G1,B1}.
-
-% [{clause,[{integer,1}],[],[{atom,ok}]},[]],
-
 scope_paths({K, Clause}, ScopePaths) ->
     ClauseScopePaths = clause_scope_paths(Clause, []),
     NewScopePaths = [{K, ClauseScopePath} || ClauseScopePath <- ClauseScopePaths],
@@ -218,21 +217,6 @@ clause_scope_paths({clause, Head, Guards, Body}, ScopePaths) ->
                 [{clause, Head, [Guard], ScopePath} || {Guard, ScopePath} <- CartesianProduct]
         end,
     ScopePaths ++ ScopePathClauses.
-
-% {'case', E0, Cs0} ->
-%     Cs1 = icr_clauses(Cs0),
-%     {'case',Anno,E1,Cs1};
-
-% icr_clauses([C0|Cs]) ->
-%     C1 = clause(C0),
-%     [C1|icr_clauses(Cs)];
-% icr_clauses([]) -> [].
-
-% clause({clause,H0,G0,B0}) ->
-%     H1 = head(H0),
-%     G1 = guard(G0),
-%     B1 = exprs(B0),
-%     {clause,H1,G1,B1}.
 
 body_scope_paths({'case', Expr, Clauses}, ScopePaths) ->
     NewExprPaths = lists:foldl(fun body_scope_paths/2, [], [Expr]),
