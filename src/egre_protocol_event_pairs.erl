@@ -419,7 +419,14 @@ index_variable({'case', _Expr, _Clauses},
     {Index + 1,
      Event ++ [Index],
      IndexedVariables ++ [{Index, <<"case">>}],
-     [{Index, 'case'} | Types],
+     Types,
+     TypeMap};
+index_variable({op, _Op, _Operand},
+               {Index, Event, IndexedVariables, Types, TypeMap}) ->
+    {Index + 1,
+     Event ++ [Index],
+     IndexedVariables ++ [{Index, <<"operation">>}],
+     Types,
      TypeMap};
 index_variable({bin, _},
                {Index, Event, IndexedVariables, Types, TypeMap}) ->
