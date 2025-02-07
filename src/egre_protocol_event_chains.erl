@@ -21,7 +21,7 @@ chain_heads(Data) ->
                not lists:member({E, Types}, ReactionEvents)].
 
 read_pairs() ->
-    filelib:fold_files("events", ~S".*\.bert", false, fun read_file/2, _Data = []).
+    filelib:fold_files("events", ~S".*\.bert$", false, fun read_file/2, _Data = []).
 
 read_file(Filename, Pairs) ->
     {ok, Binary} = file:read_file(Filename, [read]),
