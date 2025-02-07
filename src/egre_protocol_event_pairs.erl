@@ -60,8 +60,10 @@ get_event_pairs({{Module, Function, ?API_FUNCTION_ARITY}, {clause, Arguments, Co
         {_IndexedEvent, _IndexedVariables, _IndexedTypes} =
             indexed_event(Event, State#state{type_map = TypeMap3}),
 
-    case ActionEvent of
-        {[], _, _} ->
+    case {Function, ActionEvent, ReactionEvents} of
+        _NoActionEvent = {_, {[], _, _}, _} ->
+            Events;
+        _NoReactionEvent = {attempt, _, [undefined]} ->
             Events;
         _ ->
             NewEvents = [[Module, Function, ActionEvent, ReactionEvent] || ReactionEvent <- ReactionEvents],
@@ -319,6 +321,7 @@ index_variable({call, {atom, self}, []}, {Index, Event, IndexedVariables, Types,
      IndexedVariables ++ [{Index, <<"self()">>}],
      [{Index, pid} | Types],
      TypeMap};
+
 index_variable({match, {var, Var}, {record, RecordType, _Fields}},
                {Index, Event, IndexedVariables, Types, TypeMap}) ->
     BinVar = atom_to_binary(Var),
