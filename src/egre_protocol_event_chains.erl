@@ -42,6 +42,7 @@ chains_(_Live = [], Dead, _Data) ->
     Dead;
 chains_([C = ?DEAD_END | Live], Dead, Data) ->
     chains_(Live, [lists:reverse(C) | Dead], Data);
+%% TODO what if the ONLY action-reaction is a loop? (e.g. rules_resources_tick.erl)
 chains_([C = ?INFINITE_LOOP | Live], Dead, Data) ->
     chains_(Live, [lists:reverse(C) | Dead], Data);
 chains_([C = [{_, _, _, {E, _, Ts}} | _] | Live], Dead, Data) ->
