@@ -379,16 +379,21 @@ index_variable({record, RecordName, _Fields},
      [{Index, RecordTypeAtom} | Types],
      TypeMap};
 index_variable({tuple, Exprs},
-               Acc = {_, Event, _, _, _}) ->
+               {NextIdx0, Event, IndexedVariables0, IndexedTypes0, TypeInfo0}) ->
+    Acc = {NextIdx0,
+           [],
+           IndexedVariables0,
+           IndexedTypes0,
+           TypeInfo0},
     {NextIdx,
      IndexedTuple,
-     IndexedVariables2,
+     IndexedVariables,
      IndexedTypes,
      TypeInf} =
         lists:foldl(fun index_variable/2, Acc, Exprs),
     {NextIdx,
      Event ++ [list_to_tuple(IndexedTuple)],
-     IndexedVariables2,
+     IndexedVariables,
      IndexedTypes,
      TypeInf};
 %% TODO use {cons, _, _} logic, since this is a subset of that
