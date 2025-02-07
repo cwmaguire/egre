@@ -8,9 +8,11 @@
 
 chains() ->
     %egre_dbg:add(egre_protocol_event_chains, serialize),
-    Pairs = read_pairs(),
+    Pairs0 = read_pairs(),
+    Pairs = normalize_types(Pairs0),
     write_pairs(Pairs),
     ChainHeads = chain_heads(Pairs),
+    io:format(user, "ChainHeads = ~p~n", [ChainHeads]),
     Chains = chains_(ChainHeads, _DeadChains = [], Pairs),
     [print(Chain) || Chain <- Chains].
     %io:format(user, "Chains = ~p~n", [Chains]).
@@ -29,6 +31,31 @@ read_file(Filename, Pairs) ->
     %io:format(user, "Term = ~p~n", [PairList]),
     Pairs ++ [list_to_tuple(P) || P <- PairList].
 
+normalize_types(Pairs) ->
+    [normalize_pair_types(P) || P <- Pairs].
+
+normalize_pair_types({M, F, ActionEvent, ReactionEvent}) ->
+    {M,
+     F,
+     normalize_event_types(ActionEvent),
+     normalize_event_types(ReactionEvent)}.
+
+normalize_event_types(undefined) ->
+    undefined;
+normalize_event_types({Event, Vars, Types}) ->
+    EventList = tuple_to_list(Event),
+    Types2 = normalize_event_types(EventList, Types, _Normalized = []),
+    {Event, Vars, Types2}.
+
+normalize_event_types([], _, Normalized) ->
+    lists:reverse(Normalized);
+normalize_event_types([Index | Event], [{Index, Type} | Types], Normalized) ->
+    normalize_event_types(Event, Types, [Type | Normalized]);
+normalize_event_types([Index | Event], Types, Normalized) when is_integer(Index) ->
+    normalize_event_types(Event, Types, ['_' | Normalized]);
+normalize_event_types([_Atom | Event], Types, Normalized) ->
+    normalize_event_types(Event, Types, Normalized).
+
 write_pairs(Pairs) ->
     {ok, IO} = file:open("pairs", [write]),
     [write_pair(P, IO) || P <- Pairs],
@@ -46,8 +73,10 @@ chains_([C = ?DEAD_END | Live], Dead, Data) ->
 chains_([C = ?INFINITE_LOOP | Live], Dead, Data) ->
     chains_(Live, [lists:reverse(C) | Dead], Data);
 chains_([C = [{_, _, _, {E, _, Ts}} | _] | Live], Dead, Data) ->
+    io:format(user, "Current chain = ~p~n", [C]),
     LinkedPairs = [P || P = {_, _, {E2, _, Ts2}, _} <- Data,
-                        E == E2, Ts == Ts2],
+                        E == E2,
+                        is_type_match(Ts, Ts2)],
     case LinkedPairs of
         [] ->
             chains_(Live, [lists:reverse(C) | Dead], Data);
@@ -55,6 +84,15 @@ chains_([C = [{_, _, _, {E, _, Ts}} | _] | Live], Dead, Data) ->
             NewChains = [[N | C] || N <- LinkedPairs],
             chains_(NewChains ++ Live, Dead, Data)
     end.
+
+is_type_match(Types1, Types2) ->
+    Pairs = lists:zip(Types1, Types2),
+    lists:all(fun is_type_match/1, Pairs).
+
+is_type_match({'_', _}) -> true;
+is_type_match({_, '_'}) -> true;
+is_type_match({Type,Type}) -> true;
+is_type_match(_) -> false.
 
 print(Chain) ->
     {ok, IO} = file:open("egre_protocol_chains", [write]),
@@ -95,6 +133,7 @@ serialize_event({Event, Vars, Types}) ->
     VarBins = [[to_bin(Idx), <<":">>, V] || {Idx, V} <- Vars],
     VarBin = lists:join(<<", ">>, VarBins),
     TypeBins = [to_bin(T) || {_I, T} <- Types],
+    %TypeBin = type_bin(Types),
     TypeBin =
         case TypeBins of
             [] ->
@@ -110,3 +149,11 @@ to_bin(A) when is_atom(A) ->
     atom_to_binary(A);
 to_bin(T) when is_tuple(T) ->
     [<<"{">>, [to_bin(E) || E <- tuple_to_list(T)], <<"}">>].
+
+%type_bin(Event, Types) when is_list(Event)->
+%    type_bin(tuple_to_list(Event), Types, []).
+%
+%type_bin([Index | Event], [{Index, Type} | Types], IoList) ->
+%    type_bin(Event, Types, [Type | IoList]);
+%type_bin([Index | Event], Types, IoList) ->
+%    type_bin(Event, Types, [<<"_">> | IoList]);
