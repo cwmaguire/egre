@@ -17,7 +17,7 @@ chains() ->
 
 chain_heads(Data) ->
     ReactionEvents = [{E, Types} || {_, _, _, {E, _, Types}} <- Data],
-    [[Pair] || Pair = {_, _, {E, _, Types}, _} <- Data,
+    [[Pair] || Pair = {_, _, {E, _, Types}, {_, _, _}} <- Data,
                not lists:member({E, Types}, ReactionEvents)].
 
 read_pairs() ->
