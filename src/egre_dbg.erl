@@ -7,6 +7,7 @@
 -export([add/3]).
 -export([add_with_pid/2]).
 -export([stop/0]).
+-export([maybe_start_tracer/1]).
 
 %start() ->
     %dbg:start(),
