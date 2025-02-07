@@ -365,7 +365,16 @@ index_variable({match, {var, Var}, {bin, _}},
      IndexedVariables ++ [{Index, <<VarBin/binary, " = <binary>">>}],
      [{Index, list} | Types],
      TypeMap};
-
+index_variable({record, RecordName, _Fields},
+               {Index, Event, IndexedVariables, Types, TypeMap}) ->
+    RecordNameBin = atom_to_binary(RecordName),
+    RecordTypeBin = <<"#", RecordNameBin/binary, "{}">>,
+    RecordTypeAtom = binary_to_atom(RecordTypeBin),
+    {Index + 1,
+     Event ++ [Index],
+     IndexedVariables ++ [{Index, RecordTypeBin}],
+     [{Index, RecordTypeAtom} | Types],
+     TypeMap};
 index_variable({tuple, Exprs},
                Acc = {_, Event, _, _, _}) ->
     {NextIdx,
