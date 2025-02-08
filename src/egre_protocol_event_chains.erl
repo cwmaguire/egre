@@ -14,7 +14,7 @@ chains() ->
     ChainHeads = chain_heads(Pairs),
     io:format(user, "ChainHeads = ~p~n", [ChainHeads]),
     Chains = chains_(ChainHeads, _DeadChains = [], Pairs),
-    [print(Chain) || Chain <- Chains].
+    print_chains(Chains).
     %io:format(user, "Chains = ~p~n", [Chains]).
 
 chain_heads(Data) ->
@@ -118,9 +118,10 @@ is_type_match({_, '_'}) -> true;
 is_type_match({Type,Type}) -> true;
 is_type_match(_) -> false.
 
-print(Chain) ->
+print_chains(Chains) ->
+    Indent = <<>>,
     {ok, IO} = file:open("egre_protocol_chains", [write]),
-    print(Chain, IO, _Indent = <<>>),
+    [print(Chain, IO, Indent) || Chain <- Chains],
     ok = file:close(IO).
 
 print([], _, _) ->
