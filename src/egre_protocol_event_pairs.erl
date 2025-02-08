@@ -21,6 +21,17 @@ extract(ApiFuns) ->
     %egre_dbg:add(egre_protocol_event_pairs, index_variable),
     %egre_dbg:add(egre_protocol_event_pairs, reaction_events),
     Events = get_events(ApiFuns),
+    %io:format(user, "# of ApiFuns = ~p~n", [length(ApiFuns)]),
+    %Set = sets:from_list(ApiFuns),
+    %io:format(user, "# of unique ApiFuns = ~p~n", [sets:size(Set)]),
+    Keys = [K || {K, _} <- ApiFuns],
+    %[io:format(user, "unique API key: ~p~n", [K]) || K <- sets:to_list(sets:from_list(Keys, [{version, 2}]))],
+    case Events of
+        [] ->
+            [io:format(user, "No events for ~p~n", [K]) || K <- Keys];
+        _ ->
+            ok
+    end,
     egre_dbg:stop(),
     write_events(Events).
 
@@ -28,7 +39,8 @@ get_events(ApiClauses) ->
     lists:foldl(fun get_event_pairs/2, [], ApiClauses).
 
 write_events([]) ->
-    io:format("No events~n");
+    %io:format("No events~n");
+    ok;
 write_events(Events = [[Module | _] | _]) ->
     {ok, IO} = file:open(<<"events/", Module/binary, "_events.bert">>, [write]),
     file:write(IO, term_to_binary(Events)),
@@ -37,7 +49,7 @@ write_events(Events = [[Module | _] | _]) ->
 
 get_event_pairs({_K, {clause, [{var, '_'}], _, _}}, Events) ->
     Events;
-get_event_pairs({{Module, Function, ?API_FUNCTION_ARITY}, {clause, Arguments, Conjunction, Body}},
+get_event_pairs(ApiFun = {{Module, Function, ?API_FUNCTION_ARITY}, {clause, Arguments, Conjunction, Body}},
           Events)
   when Function == attempt;
        Function == succeed ->
@@ -62,8 +74,12 @@ get_event_pairs({{Module, Function, ?API_FUNCTION_ARITY}, {clause, Arguments, Co
 
     case {Function, ActionEvent, ReactionEvents} of
         _NoActionEvent = {_, {[], _, _}, _} ->
+            io:format("No action event for ~p:~p/~p~n", [Module, Function, 1]),
+            write_no_events(ApiFun),
             Events;
         _NoReactionEvent = {attempt, _, [undefined]} ->
+            io:format("No reaction events for ~p:~p/~p~n", [Module, Function, 1]),
+            write_no_events(ApiFun),
             Events;
         _ ->
             NewEvents = [[Module, Function, ActionEvent, ReactionEvent] || ReactionEvent <- ReactionEvents],
@@ -71,6 +87,12 @@ get_event_pairs({{Module, Function, ?API_FUNCTION_ARITY}, {clause, Arguments, Co
     end;
 get_event_pairs({{_Module, _Function, _}, {clause, _Bindings, _Guards, _Body}}, Events) ->
     Events.
+
+write_no_events(ApiFun) ->
+            %io:format(user, "NO EVENTS:~nApiFun = ~p~n", [ApiFun]),
+            {ok, IO} = file:open("no_events", [write, append]),
+            file:write(IO, io_lib:format("~p~n", [ApiFun])),
+            ok = file:close(IO).
 
 event(attempt, [{match, _, {tuple, [_, _, {var, Event}, _]}}]) ->
     maybe_var_event(Event);
@@ -233,8 +255,10 @@ maybe_result_record_field_event({record_field,
     State#state{events = [indexed_event(Event, State) | Events]};
 maybe_result_record_field_event({record_field,
                                  {atom, event},
-                                 Event = {tuple, _}},
-                                State = #state{events = Events}) ->
+                                 Event = {TupleOrVar, _}},
+                                State = #state{events = Events})
+  when TupleOrVar == tuple;
+       TupleOrVar == var ->
     State#state{events = [indexed_event(Event, State) | Events]};
 maybe_result_record_field_event(_, State) ->
     State.

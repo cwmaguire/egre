@@ -7,15 +7,16 @@
 -define(DEAD_END, [{_, _, _, undefined} | _]).
 
 chains() ->
-    %egre_dbg:add(egre_protocol_event_chains, serialize),
     Pairs0 = read_pairs(),
+    io:format(user, "# of Pairs0 = ~p~n", [length(Pairs0)]),
     Pairs = normalize_types(Pairs0),
     write_pairs(Pairs),
     ChainHeads = chain_heads(Pairs),
-    io:format(user, "ChainHeads = ~p~n", [ChainHeads]),
-    Chains = chains_(ChainHeads, _DeadChains = [], Pairs),
+    io:format(user, "# of ChainHeads = ~p~n", [length(ChainHeads)]),
+    %io:format(user, "ChainHeads = ~p~n", [ChainHeads]),
+    Chains = chains_(ChainHeads, _DeadChains = [], sets:new(), Pairs),
+    io:format(user, "# of Chains = ~p~n", [length(Chains)]),
     print_chains(Chains).
-    %io:format(user, "Chains = ~p~n", [Chains]).
 
 chain_heads(Data) ->
     ReactionEvents = [{E, Types} || {_, _, _, {E, _, Types}} <- Data],
@@ -28,7 +29,6 @@ read_pairs() ->
 read_file(Filename, Pairs) ->
     {ok, Binary} = file:read_file(Filename, [read]),
     PairList = binary_to_term(Binary),
-    %io:format(user, "Term = ~p~n", [PairList]),
     Pairs ++ [list_to_tuple(P) || P <- PairList].
 
 normalize_types(Pairs) ->
@@ -65,27 +65,36 @@ write_pair(Pair, IO) ->
     Chars = io_lib:format("~p~n", [Pair]),
     file:write(IO, Chars).
 
-chains_(_Live = [], Dead, _AllPairs) ->
-    Dead;
-chains_([C = ?DEAD_END | Live], Dead,  AllPairs) ->
-    chains_(Live, [lists:reverse(C) | Dead],  AllPairs);
-%% TODO what if the ONLY action-reaction is a loop? (e.g. rules_resources_tick.erl)
-chains_([C = ?INFINITE_LOOP | Live], Dead, AllPairs) ->
-    chains_(Live, [lists:reverse(C) | Dead], AllPairs);
-chains_([CurrChain | LiveChains], DeadChains, AllPairs) ->
+chains_(_Live = [], _Dead, Set, _AllPairs) ->
+    io:format(user, "Set size = ~p~n", [sets:size(Set)]),
+    sets:to_list(Set);
+chains_([C = ?DEAD_END | Live], Dead,  Set, AllPairs) ->
+    FinishedChain = lists:reverse(C),
+    chains_(Live,
+            [FinishedChain | Dead],
+            sets:add_element(FinishedChain, Set),
+            AllPairs);
+chains_([C = ?INFINITE_LOOP | Live], Dead, Set, AllPairs) ->
+    FinishedChain = lists:reverse(C),
+    chains_(Live,
+            [FinishedChain | Dead],
+            sets:add_element(FinishedChain, Set),
+            AllPairs);
+chains_([CurrChain | LiveChains], DeadChains, Set, AllPairs) ->
     [Head | Prev] = CurrChain,
 
-    io:format(user, "Current chain = ~p~n", [CurrChain]),
+    %io:format(user, "Current chain = ~p~n", [CurrChain]),
 
     IsMatch = fun (Next) -> is_pair_match(Prev, Head, Next) end,
     LinkedPairs = lists:filter(IsMatch, AllPairs),
 
     case LinkedPairs of
         [] ->
-            chains_(LiveChains, [lists:reverse(CurrChain) | DeadChains], AllPairs);
+            FinishedChain = lists:reverse(CurrChain),
+            chains_(LiveChains, [FinishedChain | DeadChains], sets:add_element(FinishedChain, Set), AllPairs);
         _ ->
             NewChains = [[N | CurrChain] || N <- LinkedPairs],
-            chains_(NewChains ++ LiveChains, DeadChains, AllPairs)
+            chains_(NewChains ++ LiveChains, DeadChains, Set, AllPairs)
     end.
 
 is_pair_match(PrevPairs, Curr, MaybeNext) ->
@@ -129,7 +138,6 @@ print([], _, _) ->
 print([Pair | Rest], IO, Indent) ->
     IoList = serialize_pair(Pair, Indent),
     Output = [Indent, IoList, <<"\n">>],
-    %io:format("~w~n", [Output]),
     file:write(IO, Output),
     print(Rest, IO, increase_indent(Indent)).
 
@@ -153,12 +161,10 @@ serialize_event(undefined) ->
     {<<"no reaction">>, <<"">>};
 serialize_event({Event, Vars, Types}) ->
     EventBins = [to_bin(E) || E <- tuple_to_list(Event)],
-    %EventBin = [<<"{">>, lists:join(<<" ">>, EventBins), <<"}">>],
     EventBin = lists:join(<<" ">>, EventBins),
     VarBins = [[to_bin(Idx), <<":">>, V] || {Idx, V} <- Vars],
     VarBin = lists:join(<<", ">>, VarBins),
     TypeBins = [to_bin(T) || {_I, T} <- Types],
-    %TypeBin = type_bin(Types),
     TypeBin =
         case TypeBins of
             [] ->
