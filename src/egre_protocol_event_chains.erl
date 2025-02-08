@@ -65,25 +65,49 @@ write_pair(Pair, IO) ->
     Chars = io_lib:format("~p~n", [Pair]),
     file:write(IO, Chars).
 
-chains_(_Live = [], Dead, _Data) ->
+chains_(_Live = [], Dead, _AllPairs) ->
     Dead;
-chains_([C = ?DEAD_END | Live], Dead, Data) ->
-    chains_(Live, [lists:reverse(C) | Dead], Data);
+chains_([C = ?DEAD_END | Live], Dead,  AllPairs) ->
+    chains_(Live, [lists:reverse(C) | Dead],  AllPairs);
 %% TODO what if the ONLY action-reaction is a loop? (e.g. rules_resources_tick.erl)
-chains_([C = ?INFINITE_LOOP | Live], Dead, Data) ->
-    chains_(Live, [lists:reverse(C) | Dead], Data);
-chains_([C = [{_, _, _, {E, _, Ts}} | _] | Live], Dead, Data) ->
-    io:format(user, "Current chain = ~p~n", [C]),
-    LinkedPairs = [P || P = {_, _, {E2, _, Ts2}, _} <- Data,
-                        E == E2,
-                        is_type_match(Ts, Ts2)],
+chains_([C = ?INFINITE_LOOP | Live], Dead, AllPairs) ->
+    chains_(Live, [lists:reverse(C) | Dead], AllPairs);
+chains_([CurrChain | LiveChains], DeadChains, AllPairs) ->
+    [Head | Prev] = CurrChain,
+
+    io:format(user, "Current chain = ~p~n", [CurrChain]),
+
+    IsMatch = fun (Next) -> is_pair_match(Prev, Head, Next) end,
+    LinkedPairs = lists:filter(IsMatch, AllPairs),
+
     case LinkedPairs of
         [] ->
-            chains_(Live, [lists:reverse(C) | Dead], Data);
+            chains_(LiveChains, [lists:reverse(CurrChain) | DeadChains], AllPairs);
         _ ->
-            NewChains = [[N | C] || N <- LinkedPairs],
-            chains_(NewChains ++ Live, Dead, Data)
+            NewChains = [[N | CurrChain] || N <- LinkedPairs],
+            chains_(NewChains ++ LiveChains, DeadChains, AllPairs)
     end.
+
+is_pair_match(PrevPairs, Curr, MaybeNext) ->
+    EqualsNext = fun(PrevPair) -> is_pair_equal(PrevPair, MaybeNext) end,
+    not lists:any(EqualsNext, PrevPairs)
+    andalso
+    is_pair_match(Curr, MaybeNext).
+
+is_pair_equal({_, _, A1, R1}, {_, _, A2, R2}) ->
+    are_events_equal(A1, A2) andalso are_events_equal(R1, R2).
+
+are_events_equal({E, _, Types1}, {E, _, Types2}) ->
+    is_type_match(Types1, Types2);
+are_events_equal(_, _) ->
+    false.
+
+is_pair_match(Pair1, Pair2) ->
+    {_, _, _, {ReactionEvent, _, RTypess}} = Pair1,
+    {_, _, {ActionEvent, _, ATypess}, _} = Pair2,
+    ReactionEvent == ActionEvent
+    andalso
+    is_type_match(RTypess, ATypess).
 
 is_type_match(Types1, Types2) ->
     Pairs = lists:zip(Types1, Types2),
