@@ -164,12 +164,13 @@ serialize_event({Event, Vars, Types}) ->
     EventBin = lists:join(<<" ">>, EventBins),
     VarBins = [[to_bin(Idx), <<":">>, V] || {Idx, V} <- Vars],
     VarBin = lists:join(<<", ">>, VarBins),
-    TypeBins = [to_bin(T) || {_I, T} <- Types],
+    TypeBins = [atom_to_binary(T) || T <- Types],
+    IsNoTypes = lists:all(fun('_') -> true; (_) -> false end, TypeBins),
     TypeBin =
-        case TypeBins of
-            [] ->
+        case IsNoTypes of
+            true ->
                 <<" (No Types)">>;
-            _ ->
+            false ->
                 [<<" [">>, lists:join(<<" ">>, TypeBins), <<"]">>]
         end,
     {[<<"{">>, EventBin, <<", ">>, TypeBin, <<"}">>], VarBin}.
