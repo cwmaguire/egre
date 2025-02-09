@@ -80,7 +80,7 @@ inline_api_disjunction(Module, {clause, Args, MaybeConjunction, Forms}, Funs) ->
             [] ->
                 [];
             _ ->
-                [MaybeConjunction]
+                MaybeConjunction
         end,
     {Module, Forms2, _Funs, _} =
         lists:foldl(fun inline_form/2,

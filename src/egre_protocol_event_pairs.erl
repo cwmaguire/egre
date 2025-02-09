@@ -14,18 +14,14 @@
 %%  src/rules/rules_body_part_inject_self.erl: error in parse transform 'egre_protocol_parse_transform':
 %%  exception error: no function clause matching egre_protocol_event_chains:index_variable({call,{atom,self},[]},{2,[1,move,from],[{1,<<"Item">>}],[],#{}}) (src/egre_protocol_event_chains.erl, line 197)
 
-
 extract(ApiFuns) ->
-    %egre_dbg:add(egre_protocol_event_pairs, get_event_pairs),
-    %egre_dbg:add(egre_protocol_event_pairs, indexed_event),
-    %egre_dbg:add(egre_protocol_event_pairs, index_variable),
-    %egre_dbg:add(egre_protocol_event_pairs, reaction_events),
+    [{{Module, Fun, _}, _} | _] = ApiFuns,
+    io:format(user, "Module:Fun = ~p:~p~n", [Module, Fun]),
+    %egre_dbg:add(egre_protocol_event_pairs, maybe_add_attempt_types),
+    egre_dbg:add(egre_protocol_event_pairs, type_inference),
+    egre_dbg:add(egre_protocol_event_pairs, type_inference_equals),
     Events = get_events(ApiFuns),
-    %io:format(user, "# of ApiFuns = ~p~n", [length(ApiFuns)]),
-    %Set = sets:from_list(ApiFuns),
-    %io:format(user, "# of unique ApiFuns = ~p~n", [sets:size(Set)]),
     Keys = [K || {K, _} <- ApiFuns],
-    %[io:format(user, "unique API key: ~p~n", [K]) || K <- sets:to_list(sets:from_list(Keys, [{version, 2}]))],
     case Events of
         [] ->
             [io:format(user, "No events for ~p~n", [K]) || K <- Keys];
@@ -36,10 +32,10 @@ extract(ApiFuns) ->
     write_events(Events).
 
 get_events(ApiClauses) ->
-    lists:foldl(fun get_event_pairs/2, [], ApiClauses).
+    {Events, _} = lists:foldl(fun get_event_pairs/2, {[], #{}}, ApiClauses),
+    Events.
 
 write_events([]) ->
-    %io:format("No events~n");
     ok;
 write_events(Events = [[Module | _] | _]) ->
     {ok, IO} = file:open(<<"events/", Module/binary, "_events.bert">>, [write]),
@@ -47,13 +43,15 @@ write_events(Events = [[Module | _] | _]) ->
     file:close(IO).
 
 
-get_event_pairs({_K, {clause, [{var, '_'}], _, _}}, Events) ->
-    Events;
+get_event_pairs({_K, {clause, [{var, '_'}], _, _}}, Acc) ->
+    Acc;
 get_event_pairs(ApiFun = {{Module, Function, ?API_FUNCTION_ARITY}, {clause, Arguments, Conjunction, Body}},
-          Events)
+          {Events, AttemptTypes})
   when Function == attempt;
        Function == succeed ->
+    io:format(user, "Conjunction = ~p~n", [Conjunction]),
     TypeMap = lists:foldl(fun type_inference/2, #{}, Conjunction),
+    io:format(user, "TypeMap = ~p~n", [TypeMap]),
     State = #state{type_map = TypeMap},
 
     Event = event(Function, Arguments),
@@ -69,24 +67,58 @@ get_event_pairs(ApiFun = {{Module, Function, ?API_FUNCTION_ARITY}, {clause, Argu
         end,
 
     ActionEvent =
-        {_IndexedEvent, _IndexedVariables, _IndexedTypes} =
+        {IndexedEvent, IndexedVariables, IndexedTypes} =
             indexed_event(Event, State#state{type_map = TypeMap3}),
 
-    case {Function, ActionEvent, ReactionEvents} of
+    ActionEvent2 =
+        %case {Function, AttemptTypes} of
+        case {Function, AttemptTypes} of
+            %{succeed, #{IndexedEvent := AttemptTypes_}} ->
+            {succeed, #{IndexedEvent := AttemptTypeMap}} ->
+                {IndexedEvent, IndexedVariables, merge_types(IndexedTypes, AttemptTypeMap)};
+            _ ->
+                ActionEvent
+        end,
+
+    AttemptTypes2 =
+        case {Function, TypeMap} of
+            {attempt, #{}} ->
+                AttemptTypes;
+            {attempt, TypeMap} ->
+                maybe_add_attempt_types(IndexedEvent, TypeMap, AttemptTypes);
+            _ ->
+                AttemptTypes
+        end,
+
+    case {Function, ActionEvent2, ReactionEvents} of
         _NoActionEvent = {_, {[], _, _}, _} ->
             io:format("No action event for ~p:~p/~p~n", [Module, Function, 1]),
             write_no_events(ApiFun),
-            Events;
+            {Events, AttemptTypes2};
         _NoReactionEvent = {attempt, _, [undefined]} ->
             io:format("No reaction events for ~p:~p/~p~n", [Module, Function, 1]),
             write_no_events(ApiFun),
-            Events;
+            {Events, AttemptTypes2};
         _ ->
-            NewEvents = [[Module, Function, ActionEvent, ReactionEvent] || ReactionEvent <- ReactionEvents],
-            Events ++ NewEvents
+            NewEvents = [[Module, Function, ActionEvent2, ReactionEvent] || ReactionEvent <- ReactionEvents],
+            {Events ++ NewEvents, AttemptTypes2}
     end;
 get_event_pairs({{_Module, _Function, _}, {clause, _Bindings, _Guards, _Body}}, Events) ->
     Events.
+
+maybe_add_attempt_types(Event, TypeMap, EventTypes) ->
+    case EventTypes of
+        #{Event := TypeMap} ->
+            EventTypes;
+        #{Event := _OtherMap} ->
+            maps:remove(Event, EventTypes);
+        _ ->
+            EventTypes#{Event => TypeMap}
+    end.
+
+merge_types(Types, TypeMap) ->
+    Map = maps:from_list(Types),
+    maps:to_list(maps:merge(Map, TypeMap)).
 
 write_no_events(ApiFun) ->
             %io:format(user, "NO EVENTS:~nApiFun = ~p~n", [ApiFun]),
@@ -111,6 +143,19 @@ maybe_var_event(Event) ->
             {var, Event}
     end.
 
+%[{op,'==',{var,'Self'},{call,{atom,self},[]}}],#{}
+
+type_inference({op, '==', {var, Var1}, {var, Var2}}, TypeMap) ->
+    case TypeMap of
+        #{Var1 := _Type1, Var2 := _Type2} ->
+            TypeMap;
+        #{Var1 := Type} ->
+            TypeMap#{Var2 => Type};
+        #{Var2 := Type} ->
+            TypeMap#{Var1 => Type};
+        _ ->
+            TypeMap
+    end;
 type_inference({op, '==', Operand1, {var, Var}}, TypeMap) ->
     type_inference( {op, '==', {var, Var}, Operand1}, TypeMap);
 type_inference({op, '==', {var, Var}, Operand1}, TypeMap) ->
@@ -266,7 +311,7 @@ maybe_result_record_field_event(_, State) ->
 % {match,{var,'_Active'},{cons,{var,'_'},{var,'_'}}}
 
 indexed_event({var, '_'}, _) ->
-    {[], #{}, #{}};
+    {[], [], []};
 indexed_event({match, {var, MaybeIgnored}, Event},
               State = #state{variables = Variables}) ->
     case atom_to_list(MaybeIgnored) of
@@ -282,7 +327,7 @@ indexed_event({var, EventVar}, State = #state{variables = Variables}) ->
         #{EventVar := Event} ->
             indexed_event(Event, State);
         _ ->
-            {[], #{}, #{}}
+            {[], [], []}
     end;
 indexed_event({tuple, Event}, #state{type_map = TypeMap}) ->
     Acc = {1,
