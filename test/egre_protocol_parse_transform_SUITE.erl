@@ -46,8 +46,7 @@ all() ->
      case_expression_is_nested_case].
 
 %all() ->
-    %[case_nested,
-     %case_expression_is_nested_case].
+    %[level_2_call_2_var_args].
 
 init_per_suite(Config) ->
 
@@ -148,41 +147,31 @@ compare(_Test, {Same, Same}) ->
 compare(Test, {ActualAst, ExpectedAst}) ->
     ExpectedPretty = iolist_to_binary(re:replace(ExpectedAst, <<"\n| ">>, <<"">>, [global])),
     ActualPretty = iolist_to_binary(re:replace(ActualAst, <<"\n| ">>, <<"">>, [global])),
-    ct:pal("Expected vs Actual AST for ~p:~n~p~n~p~n", [Test, ExpectedPretty, ActualPretty]),
+    ct:pal("Expected vs Actual AST for ~p:~n~p~n~n~p~n", [Test, ExpectedPretty, ActualPretty]),
     ct:fail("Mismatched AST for ~p", [Test]).
 
-compile(Module, Config) ->
-    In = atom_to_list(Module) ++ "_in",
-    Out = atom_to_list(Module) ++ "_out",
-    FileIn = In ++ ".erl",
-    FileOut = Out ++ ".erl",
-    ModuleIn = list_to_atom(In),
-    ModuleOut = list_to_atom(Out),
+compile(ModuleBaseName, Config) ->
+    In = atom_to_list(ModuleBaseName) ++ "_in",
+    Out = atom_to_list(ModuleBaseName) ++ "_out",
+
+    {ok, InData} = compile_(In, egre_protocol_parse_transform, Config),
+    {ok, OutData} = compile_(Out, egre_protocol_id_transform, Config),
+
+    {InData, OutData}.
+
+compile_(ModuleName, TransformModule, Config) ->
+    Module = list_to_atom(ModuleName),
 
     DataDir = proplists:get_value(data_dir, Config),
+    File = ModuleName ++ ".erl",
+    Path = DataDir ++ File,
 
-    InPath = DataDir ++ FileIn,
-    Result1 = compile:file(InPath, [{parse_transform, egre_protocol_parse_transform}, return_errors]),
-    case Result1 of
-        {error, Errors1, _Warnings1} ->
-            ct:fail("Compile error for ~p:~n~p~n", [FileIn, Errors1]);
-        {ok, ModuleIn} ->
-            ok;
-        Other1 ->
-            ct:pal("~p:~p: Other~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Other1])
-    end,
-
-    OutPath = DataDir ++ "/" ++ FileOut,
-    Result2 = compile:file(OutPath, [{parse_transform, egre_protocol_id_transform}, return_errors]),
-    case Result2 of
-        {error, Errors2, _Warnings2} ->
-            ct:fail("Compile error for ~p:~n~p~n", [FileOut, Errors2]);
-        {ok, ModuleOut} ->
-            ok;
-        Other2 ->
-            ct:pal("~p:~p: Other~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Other2])
-    end,
-
-    {ok, InData} = file:read_file(In),
-    {ok, OutData} = file:read_file(Out),
-    {InData, OutData}.
+    Result = compile:file(Path, [{parse_transform, TransformModule}, return_errors]),
+    case Result of
+        {error, Errors, _Warnings} ->
+            ct:fail("Compile error for ~p:~n~p~n", [File, Errors]);
+        {ok, Module} ->
+            file:read_file(ModuleName);
+        Other ->
+            ct:pal("~p:~p: Other~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Other])
+    end.
