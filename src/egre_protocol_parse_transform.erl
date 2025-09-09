@@ -188,8 +188,15 @@ inline_clause({clause, Args, Guards, Body},
         lists:foldl(fun inline_form/2,
                     {Module, [], Funs, InlinedFuns},
                     Body),
-    Clause = {clause, Args2, Guards, Body2},
-    {Module, Forms ++ [Clause], Funs, InlinedFuns2}.
+    Clauses =
+        case Guards of
+            [] ->
+                [{clause, Args2, Guards, Body2}];
+            _ ->
+                [{clause, Args2, Conjunction, Body2} || Conjunction <- Guards]
+        end,
+    %Clause = {clause, Args2, Guards, Body2},
+    {Module, Forms ++ Clauses, Funs, InlinedFuns2}.
 
 inline_case_clause({clause, Expression, Guards, Body},
                    {Module, Forms, Funs, InlinedFuns}) ->
@@ -197,25 +204,31 @@ inline_case_clause({clause, Expression, Guards, Body},
         lists:foldl(fun inline_form/2,
                     {Module, [], Funs, InlinedFuns},
                     Body),
-    Clause = {clause, Expression, Guards, Body2},
-    {Module, Forms ++ [Clause], Funs, InlinedFuns2}.
+    Clauses =
+        case Guards of
+            [] ->
+                [{clause, Expression, Guards, Body2}];
+            _ ->
+                [{clause, Expression, Conjunction, Body2} || Conjunction <- Guards]
+        end,
+    %Clause = {clause, Expression, Guards, Body2},
+    {Module, Forms ++ Clauses, Funs, InlinedFuns2}.
 
 scope_paths({K, Clause}, ScopePaths) ->
     ClauseScopePaths = clause_scope_paths(Clause, []),
     NewScopePaths = [{K, ClauseScopePath} || ClauseScopePath <- ClauseScopePaths],
     ScopePaths ++ NewScopePaths.
 
-clause_scope_paths({clause, Head, Guards, Body}, ScopePaths) ->
-    NewScopePaths = lists:foldl(fun body_scope_paths/2, [], Body),
-    ScopePathClauses =
-        case Guards of
+clause_scope_paths({clause, Head, MaybeGuards, Body}, ScopePaths) ->
+    Guards =
+        case MaybeGuards of
             [] ->
-                [{clause, Head, [], ScopePath} || ScopePath <- NewScopePaths];
+                [];
             _ ->
-                CartesianProduct = [{Guard, ScopePath} || Guard <- Guards,
-                                                          ScopePath <- NewScopePaths],
-                [{clause, Head, [Guard], ScopePath} || {Guard, ScopePath} <- CartesianProduct]
+                [MaybeGuards]
         end,
+    NewScopePaths = lists:foldl(fun body_scope_paths/2, [], Body),
+    ScopePathClauses = [{clause, Head, Guards, ScopePath} || ScopePath <- NewScopePaths],
     ScopePaths ++ ScopePathClauses.
 
 body_scope_paths({'case', Expr, Clauses}, ScopePaths) ->
