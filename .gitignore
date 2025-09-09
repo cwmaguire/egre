@@ -24,7 +24,6 @@ patch_3
 slack_history_2024-03-18
 suite.log.latest.html
 test/egre_protocol_parse_transform_SUITE_data/egre_protocol_parse_transform.erl
-test/test.config
 test_parse
 test_parse.erl
 trace_1
