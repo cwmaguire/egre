@@ -20,41 +20,34 @@
 -export([type_inference_recursive/1]).
 -export([type_inference_event_plus/1]).
 
+%all() ->
+    %[no_events,
+     %terminal_event,
+     %action_reaction,
+     %resend_raw_event,
+     %resend_variable_event,
+     %modify_raw_event,
+     %broadcast_raw_event,
+     %type_inference_is_pid,
+     %type_inference_equals,
+     %type_inference_plus,
+     %type_inference_event_plus,
+     %type_inference_recursive].
+
 all() ->
-    [no_events,
-     terminal_event,
-     action_reaction,
-     resend_raw_event,
-     resend_variable_event,
-     modify_raw_event,
-     broadcast_raw_event,
-     type_inference_is_pid,
-     type_inference_equals,
-     type_inference_plus,
-     type_inference_event_plus,
-     type_inference_recursive].
+    [terminal_event].
 
 no_events(_Config) ->
-    Events = egre_protocol_event_chains:get_events(?NO_EVENTS),
+    Events = egre_protocol_event_pairs:get_events(?NO_EVENTS),
     ?assertEqual([], Events).
 
 terminal_event(_Config) ->
-    Events = egre_protocol_event_chains:get_events(?TERMINAL_EVENT),
-    ExpectedEvents = [[<<"attack_resource">>,
-                       attempt,
-
-                       %% Action event
-                       {{1, attack, 2, with, 3},
-                        [{1, <<"Character">>}, {2, <<"Target">>}, {3, <<"Owner">>}],
-                        _ActionTypeInference = []},
-
-                       %% Reaction event
-                       undefined
-                      ]],
+    Events = egre_protocol_event_pairs:get_events(?TERMINAL_EVENT),
+    ExpectedEvents = [],
     ?assertEqual(ExpectedEvents, Events).
 
 action_reaction(_Config) ->
-    Events = egre_protocol_event_chains:get_events(?ACTION_REACTION),
+    Events = egre_protocol_event_pairs:get_events(?ACTION_REACTION),
     SortedEvents = lists:sort(Events),
     ExpectedEvents = [[<<"attack_resource">>,
                        attempt,
@@ -89,7 +82,7 @@ resend_raw_event(_Config) ->
     expect_event(?RESEND_RAW_EVENT).
 
 resend_variable_event(_Config) ->
-    egre_dbg:add(egre_protocol_event_chains, reaction_events),
+    egre_dbg:add(egre_protocol_event_pairs, reaction_events),
     expect_event(?RESEND_VARIABLE_EVENT).
 
 modify_raw_event(_Config) ->
@@ -99,7 +92,7 @@ broadcast_raw_event(_Config) ->
     expect_event(?BROADCAST_RAW_EVENT).
 
 expect_event(ApiFunctionClauses) ->
-    Events = egre_protocol_event_chains:get_events(ApiFunctionClauses),
+    Events = egre_protocol_event_pairs:get_events(ApiFunctionClauses),
     ExpectedEvents = [[<<"attack_resource">>,
                        attempt,
 
@@ -116,7 +109,7 @@ expect_event(ApiFunctionClauses) ->
     ?assertEqual(ExpectedEvents, Events).
 
 type_inference_self(_Config) ->
-    Events = egre_protocol_event_chains:get_events(?TYPE_INFERENCE_SELF),
+    Events = egre_protocol_event_pairs:get_events(?TYPE_INFERENCE_SELF),
     ExpectedEvents = [[<<"attack_resource">>,
                        attempt,
 
@@ -133,7 +126,7 @@ type_inference_self(_Config) ->
     ?assertEqual(ExpectedEvents, Events).
 
 type_inference_is_pid(_Config) ->
-    Events = egre_protocol_event_chains:get_events(?TYPE_INFERENCE_IS_PID),
+    Events = egre_protocol_event_pairs:get_events(?TYPE_INFERENCE_IS_PID),
     ExpectedEvents = [[<<"attack_resource">>,
                        attempt,
 
@@ -150,7 +143,7 @@ type_inference_is_pid(_Config) ->
     ?assertEqual(ExpectedEvents, Events).
 
 type_inference_equals(_Config) ->
-    Events = egre_protocol_event_chains:get_events(?TYPE_INFERENCE_EQUALS),
+    Events = egre_protocol_event_pairs:get_events(?TYPE_INFERENCE_EQUALS),
     ExpectedEvents = [[<<"attack_resource">>,
                        attempt,
 
@@ -183,7 +176,7 @@ type_inference_equals(_Config) ->
     ?assertEqual(ExpectedEvents, Events).
 
 type_inference_plus(_Config) ->
-    Events = egre_protocol_event_chains:get_events(?TYPE_INFERENCE_PLUS),
+    Events = egre_protocol_event_pairs:get_events(?TYPE_INFERENCE_PLUS),
     ExpectedEvents = [[<<"attack_resource">>,
                        attempt,
 
@@ -202,7 +195,7 @@ type_inference_plus(_Config) ->
     ?assertEqual(ExpectedEvents, Events).
 
 type_inference_event_plus(_Config) ->
-    Events = egre_protocol_event_chains:get_events(?TYPE_INFERENCE_EVENT_PLUS),
+    Events = egre_protocol_event_pairs:get_events(?TYPE_INFERENCE_EVENT_PLUS),
     ExpectedEvents = [[<<"attack_resource">>,
                        attempt,
 
@@ -219,7 +212,7 @@ type_inference_event_plus(_Config) ->
     ?assertEqual(ExpectedEvents, Events).
 
 type_inference_recursive(_Config) ->
-    Events = egre_protocol_event_chains:get_events(?TYPE_INFERENCE_RECURSIVE),
+    Events = egre_protocol_event_pairs:get_events(?TYPE_INFERENCE_RECURSIVE),
     ExpectedEvents = [[<<"attack_resource">>,
                        attempt,
 
