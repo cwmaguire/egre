@@ -1,6 +1,47 @@
 Protocol is too hard to follow
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2025-09-14   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+Also, where does 'no reaction' come from? I have tests for a "terminal event" that were failing so I modified
+them a few days ago to not produce "dangling" event pairs in the parsing step. So how does the chains logic
+generate "no reaction"?
+
+  In the egre_protocol_event_parsing_SUITE.erl we have a ?TERMINAL_EVENT with an empty body.
+  (Does an empty Erlang function make sense? No.)
+  egre_protocol_event_pairs.erl sees that there's no generated event on line 98 and calls "write_no_events"
+  which writes out the {MFA, <clause AST>} to the "no_events" file in the testing directory.
+
+  In this case we don't add any event pairs. However, it seems like egre_protocol_event_chains is expecting
+  "terminal" pairs with an 'undefined' reaction to cap off any event chain.
+
+  Something to look into. I think I "fixed" the terminal event test by breaking the chains logic.
+
+body_part_look:succeed does generate a new event. Need to fix.
+
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  ░
+  ░ attempt:char_inject_self {1 look,  [_]} ->                  1:Self
+  ░                            {1 look 2,  [_ _]}                  1:Self, 2:Owner
+  ░   succeed:body_part_look {1 look 2,  [_ _]} ->                  1:Source, 2:Self
+  ░                            no reaction
+  ░
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+
+Why does this loop?
+
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  ░
+  ░ attempt:char_look {1 look 2,  [_ _]} ->                  1:Source, 2:TargetName
+  ░                     {1 look 2,  [_ pid]}                  1:Source, 2:self()
+  ░   attempt:char_look {1 look 2,  [_ _]} ->                  1:Source, 2:TargetName
+  ░                       {1 look 2,  [_ pid]}                  1:Source, 2:self()
+  ░
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2025-01-18   ┃
 ┗━━━━━━━━━━━━━━━━┛
 
@@ -10,7 +51,7 @@ a(S) when is_binary(S); is_list(S) ->
   case S of
     <<"abc">> ->
         1;
-    "abc" ->   %% We can't get here is S is binary
+    "abc" ->   %% We can't get here as S is binary
         2
   end
 
@@ -472,19 +513,39 @@ smart.
 ┃   2019-01-04   ┃
 ┗━━━━━━━━━━━━━━━━┛
 
-I created a script to find all the attempt and succeed calls in the handlers and list them in a file. This may be enough for now to debug when things are going wrong.
-If I gave up the expressiveness of the tuples with atoms and just used a message ID it would be much easier to debug, but much harder to read. I’d always have to be flipping back and forth between the handler and the index to figure out what messages are being handled where.
-I should add “NewMessage” to the script so I can see where an existing message is converted to a new message.
-If I monitored my tests I could capture what messages are sent. I have it in the logs but I could clean it up and just capture the protocol. This would rely on every message being tested though. That would just tell me my tests worked. I need to see what’s going on when my tests _don’t_ work.
+I created a script to find all the attempt and succeed calls in the handlers
+and list them in a file. This may be enough for now to debug when things are
+going wrong.
+
+If I gave up the expressiveness of the tuples with atoms and just used a
+message ID it would be much easier to debug, but much harder to read. I’d
+always have to be flipping back and forth between the handler and the index to
+figure out what messages are being handled where.
+
+I should add “NewMessage” to the script so I can see where an existing message
+is converted to a new message.
+
+If I monitored my tests I could capture what messages are sent. I have it in
+the logs but I could clean it up and just capture the protocol. This would rely
+on every message being tested though. That would just tell me my tests worked.
+I need to see what’s going on when my tests _don’t_ work.
 
 ┏━━━━━━━━━━━━━━━━┓
 ┃   2019-01-03   ┃
 ┗━━━━━━━━━━━━━━━━┛
 
-I’m not sure that animation is the answer. I think extracting the protocol from the code would be sufficient. A parse transform might be the right tool to catalogue all of the attempt, succeed and fail calls that the handlers do. This would give me an easy way to see what messages are in the protocol and what handlers generate and respond to them.
-An animation would show what actually happened, i.e. what was wired up correctly. I want to see all of the wiring to figure out what was _intended_ even if it isn’t wired correctly.
-It wouldn’t hurt to animate it, so I might do that too, but I should catalogue the protocol first.
-Brevan, Justin and I had some interesting ideas at Geek Night: - use a graph database and query for the messages - give each message a key - maybe a hash? - use heuristics to see what objects aren’t responding to events Also, Brevan pointed out that my messages are a small language.
+I’m not sure that animation is the answer. I think extracting the protocol from
+the code would be sufficient. A parse transform might be the right tool to
+catalogue all of the attempt, succeed and fail calls that the handlers do. This
+would give me an easy way to see what messages are in the protocol and what
+handlers generate and respond to them. An animation would show what actually
+happened, i.e. what was wired up correctly. I want to see all of the wiring to
+figure out what was _intended_ even if it isn’t wired correctly. It wouldn’t
+hurt to animate it, so I might do that too, but I should catalogue the protocol
+first. Brevan, Justin and I had some interesting ideas at Geek Night: - use a
+graph database and query for the messages - give each message a key - maybe a
+hash? - use heuristics to see what objects aren’t responding to events Also,
+Brevan pointed out that my messages are a small language.
 
 ┏━━━━━━━━━━━━━━━━┓
 ┃   2018-11-15   ┃
@@ -497,4 +558,6 @@ I should create a 2D game where I can play live and play back a recorded session
 ┗━━━━━━━━━━━━━━━━┛
 
 It's too hard to follow all these events all over the place. They get modified and resent and it's hard to link the resent message to the handler expecting that resent message.
-I'm thinking maybe I should write a tool to trace out all the paths: - show where messages are created and consumed - check for messages that don't have either a creator or a consumer, i.e. I've broken the chain of logic somewhere
+I'm thinking maybe I should write a tool to trace out all the paths:
+- show where messages are created and consumed
+- check for messages that don't have either a creator or a consumer, i.e. I've broken the chain of logic somewhere
