@@ -39,7 +39,8 @@ fi
 # erlang.mk automatically adds _SUITE to the filename
 #CT_SUITES="egre_protocol_parse_transform" \
 #CT_SUITES="egre_protocol_parse_transform egre_protocol_event_parsing" \
-CT_SUITES="egre_protocol_event_parsing" \
+#CT_SUITES="egre_protocol_event_parsing" \
+CT_SUITES="egre_protocol_parse_transform egre_protocol_event_parsing" \
 CT_OPTS="-config test/test.config -depth 100 ${CASES} " \
 make ct | tee  out
 
