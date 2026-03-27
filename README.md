@@ -1,7 +1,7 @@
 # **EGRE** - **E**rlang **G**raph **R**ules **E**ngine
 
-EGRE has been split off from GERLSHMUD; GERLSHMUD is a MUD built in
-Erlang with a graph rules engine. EGRE is that rules engine.
+A rules engine for games.
+
 
 ```mermaid
 flowchart TD
@@ -9,8 +9,13 @@ flowchart TD
     etd["egre_tower_defence"] --> ea["egre_arcade"]
     em & ea --> e["egre"]
 ```
+
+## AI
+No AI has been used to build EGRE, and I have no plans to use AI.
+
 ## Goals
 **1)** A completely flexible MUD that can handle **any** logic.
+
 **2)** Maximum parallelism and distribution.
 
 ## Guiding Principle
