@@ -121,10 +121,10 @@ merge_types(Types, TypeMap) ->
     maps:to_list(maps:merge(Map, TypeMap)).
 
 write_no_events(ApiFun) ->
-            %io:format(user, "NO EVENTS:~nApiFun = ~p~n", [ApiFun]),
-            {ok, IO} = file:open("no_events", [write, append]),
-            file:write(IO, io_lib:format("~p~n", [ApiFun])),
-            ok = file:close(IO).
+    %io:format(user, "NO EVENTS:~nApiFun = ~p~n", [ApiFun]),
+    {ok, IO} = file:open("no_events", [write, append]),
+    file:write(IO, io_lib:format("~p~n", [ApiFun])),
+    ok = file:close(IO).
 
 event(attempt, [{match, _, {tuple, [_, _, {var, Event}, _]}}]) ->
     maybe_var_event(Event);
