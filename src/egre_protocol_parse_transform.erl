@@ -1,28 +1,308 @@
-%% Copyright 2022, Chris Maguire <cwmaguire@protonmail.com>
 -module(egre_protocol_parse_transform).
 
 -export([parse_transform/2]).
+-export([inline_form/2]).
+-export([body_scope_paths/2]).
+
+%% FIXME
+%% rules_attribute_look is not working
+%% is_owner/2 and describe/4 are not being inlined
 
 parse_transform(Forms, _Options) ->
-    io:format("~~", []),
-
-    CsvFilename = csv_filename("protocol"),
-
-    Events = events(Forms, #{module => module(Forms)}),
-
-    {ok, CsvFile} = file:open(CsvFilename, [write, append]),
-    case file:write(CsvFile, [Events]) of
-        ok ->
-            %io:format(user, "Write successful~n", []);
-            ok;
-        Error ->
-            io:format(user, "~p Write failed: ~p~n~p~n", [module(Forms), Error, Events])
-    end,
-    file:close(CsvFile),
+    %egre_dbg:add(egre_protocol_parse_transform, inline_form),
+    InlinedApiFunctions = inline_flatten(Forms),
+    egre_protocol_event_pairs:extract(InlinedApiFunctions),
     Forms.
 
+inline_flatten([FilenameAttribute | Forms]) ->
+    FileRoot = filename(FilenameAttribute),
+    Module = module(Forms),
+
+    AstFuns = lists:filter(fun is_fun/1, Forms),
+    AstFuns2 = [strip_lines(F) || F <- AstFuns],
+    FunKVs = lists:map(fun(Fun) ->
+                               fun2kv(Module, Fun)
+                       end,
+                       AstFuns2),
+    Funs = maps:from_list(FunKVs),
+    ApiFunKVs = lists:filter(fun is_api_fun/1, FunKVs),
+    ApiFuns = maps:from_list(ApiFunKVs),
+
+    InlinedFuns = maps:map(fun(K, V) ->
+                               inline_api_fun(K, V, Funs)
+                           end,
+                           ApiFuns),
+
+    FunClauses = lists:foldl(fun flatten_clauses/2, [], maps:to_list(InlinedFuns)),
+    ScopePaths = lists:foldl(fun scope_paths/2, [], FunClauses),
+    SortedScopePaths = lists:sort(ScopePaths),
+
+    Path = path(),
+    {ok, IO} = file:open(Path ++ "/" ++ FileRoot, [write]),
+    FormsIolist = io_lib:format("~p", [SortedScopePaths]),
+    file:write(IO, FormsIolist),
+    file:close(IO),
+    ScopePaths.
+
+flatten_clauses({K, Clauses}, ModuleDisjunctions) ->
+    ModuleDisjunctionsNew = [{K, Disjunction} || Clause <- Clauses, Disjunction <- Clause],
+    ModuleDisjunctions ++ ModuleDisjunctionsNew.
+
+is_fun({function, _Line, _Name, _Arity, _Clauses}) ->
+    true;
+is_fun(_) ->
+    false.
+
+is_api_fun({{_Mod, attempt, 1}, _}) ->
+    true;
+is_api_fun({{_Mod, succeed, 1}, _}) ->
+    true;
+is_api_fun(_) ->
+    false.
+
+fun2kv(Module, {function, Name, Arity, Clauses}) ->
+    {{Module, Name, Arity}, Clauses}.
+
+
+inline_api_fun({Module, _, _}, Clauses, Funs) ->
+    [inline_api_clause(Module, C, Funs) || C <- Clauses].
+
+inline_api_clause(Module, {clause, Args, [], Forms}, Funs) ->
+    [inline_api_disjunction(Module, {clause, Args, [], Forms}, Funs)];
+inline_api_clause(Module, {clause, Args, Guards, Forms}, Funs) ->
+    [inline_api_disjunction(Module,
+                            {clause, Args, Conjunction, Forms},
+                            Funs) || Conjunction <- Guards].
+
+inline_api_disjunction(Module, {clause, Args, MaybeConjunction, Forms}, Funs) ->
+    Disjunction =
+        case MaybeConjunction of
+            [] ->
+                [];
+            _ ->
+                MaybeConjunction
+        end,
+    {Module, Forms2, _Funs, _} =
+        lists:foldl(fun inline_form/2,
+                    {Module, _Forms = [], Funs, []},
+                    Forms),
+        {clause, Args, Disjunction, Forms2}.
+
+inline_form(Form = {call, {atom, ErlangFun}, _CallArgs},
+            {Module, Forms, Funs, InlinedFuns})
+  when ErlangFun == throw;
+       ErlangFun == self;
+       ErlangFun == integer_to_binary;
+       ErlangFun == make_ref;
+       ErlangFun == atom_to_binary;
+       ErlangFun == min;
+       ErlangFun == tuple_to_list;
+       ErlangFun == list_to_tuple ->
+    {Module, Forms ++ [Form], Funs, InlinedFuns};
+inline_form(Form = {call, {atom, FunName}, CallArgs},
+            {Module, Forms, Funs, InlinedFuns}) ->
+
+    case lists:member(FunName, InlinedFuns) of
+        false ->
+            InlinedFuns2 = [FunName | InlinedFuns],
+
+            {Module, ArgForms, _Funs, InlinedFuns3} =
+                lists:foldl(fun inline_form/2,
+                            {Module, [], Funs, InlinedFuns2},
+                            CallArgs),
+
+            Arity = length(CallArgs),
+            Clauses = maps:get({Module, FunName, Arity}, Funs),
+            {Module, Clauses2, _Funs2, InlinedFuns4} =
+                lists:foldl(fun inline_clause/2,
+                            {Module, [], Funs, InlinedFuns3},
+                            Clauses),
+
+            Case = {'case', {tuple, ArgForms}, Clauses2},
+            {Module, Forms ++ [Case], Funs, InlinedFuns4};
+        true ->
+            {Module, Forms ++ [Form], Funs, InlinedFuns}
+    end;
+
+inline_form({lc, Body, Generators},
+            {Module, Forms, Funs, InlinedFuns}) ->
+    {Module, [BodyForm], _, InlinedFuns2} =
+        inline_form(Body, {Module, [], Funs, InlinedFuns}),
+
+    {Module, GeneratorForms, _, InlinedFuns3} =
+        lists:foldl(fun inline_lc_expression/2,
+                    {Module, [], Funs, InlinedFuns2},
+                    Generators),
+
+    LC = {lc, BodyForm, GeneratorForms},
+    {Module, Forms ++ [LC], Funs, InlinedFuns3};
+
+inline_form({'case', Expression, Clauses},
+            {Mod, Forms, Funs, InlinedFuns}) ->
+
+    {Mod, [InlinedExpression], _, InlinedFuns2} =
+        inline_form(Expression, {Mod, [], Funs, InlinedFuns}),
+
+    {Module, Clauses2, _Funs2, InlinedFuns3} =
+        lists:foldl(fun inline_case_clause/2,
+                    {Mod, [], Funs, InlinedFuns2},
+                    Clauses),
+
+    Case = {'case', InlinedExpression, Clauses2},
+    {Module, Forms ++ [Case], Funs, InlinedFuns3};
+
+inline_form({tuple, Elements}, {Module, Forms, Funs, InlinedFuns}) ->
+    {Module, SubForms2, _Funs, InlinedFuns2} =
+        lists:foldl(fun inline_form/2,
+                    {Module, [], Funs, InlinedFuns},
+                    Elements),
+    Form2 = {tuple, SubForms2},
+    {Module, Forms ++ [Form2], Funs, InlinedFuns2};
+inline_form(Form, {Module, Forms, Funs, InlinedFuns})
+  when is_tuple(Form) ->
+    SubForms = tuple_to_list(Form),
+
+    {Module, SubForms2, _Funs, InlinedFuns2} =
+        lists:foldl(fun inline_form/2,
+                    {Module, [], Funs, InlinedFuns},
+                    SubForms),
+    Form2 = list_to_tuple(SubForms2),
+    {Module, Forms ++ [Form2], Funs, InlinedFuns2};
+inline_form(Form, {Module, Forms, Funs, InlinedFuns}) ->
+    {Module, Forms ++ [Form], Funs, InlinedFuns}.
+
+inline_lc_expression({generate, Bindings, Expression},
+                    {Module, Forms, Funs, InlinedFuns}) ->
+    {Module, [Expression2], _Funs, InlinedFuns2} =
+        inline_form(Expression, {Module, [], Funs, InlinedFuns}),
+    Generator = {generate, Bindings, Expression2},
+    {Module, Forms ++ [Generator], Funs, InlinedFuns2};
+inline_lc_expression(Form,
+                    {Module, Forms, Funs, InlinedFuns}) ->
+    {Module, Forms ++ [Form], Funs, InlinedFuns}.
+
+inline_clause({clause, Args, Guards, Body},
+              {Module, Forms, Funs, InlinedFuns}) ->
+    Args2 = [{tuple, Args}],
+    {Module, Body2, _Funs, InlinedFuns2} =
+        lists:foldl(fun inline_form/2,
+                    {Module, [], Funs, InlinedFuns},
+                    Body),
+    Clauses =
+        case Guards of
+            [] ->
+                [{clause, Args2, Guards, Body2}];
+            _ ->
+                [{clause, Args2, Conjunction, Body2} || Conjunction <- Guards]
+        end,
+    %Clause = {clause, Args2, Guards, Body2},
+    {Module, Forms ++ Clauses, Funs, InlinedFuns2}.
+
+inline_case_clause({clause, Expression, Guards, Body},
+                   {Module, Forms, Funs, InlinedFuns}) ->
+    {Module, Body2, _Funs, InlinedFuns2} =
+        lists:foldl(fun inline_form/2,
+                    {Module, [], Funs, InlinedFuns},
+                    Body),
+    Clauses =
+        case Guards of
+            [] ->
+                [{clause, Expression, Guards, Body2}];
+            _ ->
+                [{clause, Expression, Conjunction, Body2} || Conjunction <- Guards]
+        end,
+    %Clause = {clause, Expression, Guards, Body2},
+    {Module, Forms ++ Clauses, Funs, InlinedFuns2}.
+
+scope_paths({K, Clause}, ScopePaths) ->
+    ClauseScopePaths = clause_scope_paths(Clause, []),
+    NewScopePaths = [{K, ClauseScopePath} || ClauseScopePath <- ClauseScopePaths],
+    ScopePaths ++ NewScopePaths.
+
+clause_scope_paths({clause, Head, MaybeGuards, Body}, ScopePaths) ->
+    Guards =
+        case MaybeGuards of
+            [] ->
+                [];
+            _ ->
+                [MaybeGuards]
+        end,
+    NewScopePaths = lists:foldl(fun body_scope_paths/2, [], Body),
+    ScopePathClauses = [{clause, Head, Guards, ScopePath} || ScopePath <- NewScopePaths],
+    ScopePaths ++ ScopePathClauses.
+
+body_scope_paths({'case', Expr, Clauses}, ScopePaths) ->
+    NewExprPaths = lists:foldl(fun body_scope_paths/2, [], [Expr]),
+    NewScopePaths = lists:foldl(fun clause_scope_paths/2, [], Clauses),
+    NewCaseScopePaths =
+        [[{'case', ExprPath, [NewScopePath]}] || [ExprPath] <- NewExprPaths, NewScopePath <- NewScopePaths],
+    case ScopePaths of
+        [] ->
+            NewCaseScopePaths;
+        _ ->
+            CartesianProduct =
+                [ScopePath ++ NewScopePath || ScopePath <- ScopePaths,
+                                              NewScopePath <- NewCaseScopePaths],
+            CartesianProduct
+    end;
+body_scope_paths({tuple, []}, []) ->
+    [[{tuple, []}]];
+body_scope_paths({tuple, []}, ScopePaths) ->
+    [ScopePath ++ [{tuple, []}] || ScopePath <- ScopePaths];
+body_scope_paths({tuple, Items}, ScopePaths) ->
+    ItemScopePaths = [body_scope_paths(I, []) || I <- Items],
+    ElementLists = lists:foldl(fun cartesian_product/2, [], ItemScopePaths),
+    TuplePaths = [[{tuple, Elements}] || Elements <- ElementLists],
+    case ScopePaths of
+        [] ->
+            TuplePaths;
+        _ ->
+            [ScopePath ++ TuplePath || TuplePath <- TuplePaths, ScopePath <- ScopePaths]
+    end;
+body_scope_paths({match, Expr1, Expr2}, ScopePaths) ->
+    NewExpr1Paths = lists:foldl(fun body_scope_paths/2, [], [Expr1]),
+    NewExpr2Paths = lists:foldl(fun body_scope_paths/2, [], [Expr2]),
+    NewMatchScopePaths =
+        [[{match, Expr1Path, Expr2Path}] || [Expr1Path] <- NewExpr1Paths, [Expr2Path] <- NewExpr2Paths],
+    case ScopePaths of
+        [] ->
+            NewMatchScopePaths;
+        _ ->
+            [ScopePath ++ NewMatchScopePath || ScopePath <- ScopePaths, NewMatchScopePath <- NewMatchScopePaths]
+    end;
+body_scope_paths(NotCase, []) ->
+    [[NotCase]];
+body_scope_paths(NotCase, ScopePaths) ->
+    [ScopePath ++ [NotCase] || ScopePath <- ScopePaths].
+
+cartesian_product(After, _Acc = []) ->
+    After;
+cartesian_product(After, Before) ->
+    [B ++ A || B <- Before, A <- After].
+
+path() ->
+    case os:getenv("EGRE_PARSE_TRANSFORM_OUT_DIR") of
+        false ->
+            {ok, CWD} = file:get_cwd(),
+            CWD;
+        Path ->
+            Path
+    end.
+
+strip_lines({L, C}) when is_integer(L), is_integer(C) ->
+    delete_me;
+strip_lines(Form) when is_tuple(Form) ->
+    List = tuple_to_list(Form),
+    Forms2 = [strip_lines(F) || F <- List],
+    Forms3 = [F || F <- Forms2, F /= delete_me],
+    list_to_tuple(Forms3);
+strip_lines(Form) when is_list(Form) ->
+    [strip_lines(F) || F <- Form];
+strip_lines(Form) ->
+    Form.
+
 module([{attribute, _Line, module, Module} | _]) ->
-    remove_prefix(<<"rules_">>, a2b(Module));
+    remove_prefix(<<"rules_">>, atom_to_binary(Module));
 module([_ | Forms]) ->
     module(Forms);
 module(_) ->
@@ -36,454 +316,5 @@ remove_prefix(Prefix, Bin) ->
             Bin
     end.
 
-csv_filename(Filename) ->
-    filename:rootname(Filename) ++ ".csv".
-
-events(Forms, State) when is_list(Forms) ->
-    lists:flatten([events(Form, State) || Form <- Forms]);
-events({function,_Line, Name,_Arity,Clauses}, State) when Name == 'attempt' ->
-    lists:map(fun(Clause) -> attempt_clause(Clause, State) end, Clauses);
-events({function,_Line, Name,_Arity,Clauses}, State) when Name == 'succeed' ->
-    lists:map(fun(Clause) -> succeed_clause(Clause, State) end, Clauses);
-events(_Form, _State) ->
-    [].
-
-
-catch_clause({clause, _Line0, Exception, GuardGroups, Body}, State) ->
-    [{tuple, _Line1, [Class, ExceptionPattern, _Wild]}] = Exception,
-    {Exp1, State1} = search(Class, State),
-    {Exp2, State2} = search(ExceptionPattern, State1),
-    {Exp3, State3} = guard_groups(GuardGroups, State2),
-    {Exps, State4} = loop_with_state(Body, fun search/2, State3),
-    {[Exp1, Exp2, Exp3 | Exps], State4}.
-
-clause({clause, _Line, Head, GuardGroups, Body}, State) ->
-    clause('', {clause, _Line, Head, GuardGroups, Body}, State).
-
-clause(_Name, {clause, _Line, _Head, _GuardGroups, Body}, State) ->
-    % Don't look at function arguments and guards that aren't attempt or succeed
-    % but do look for any calls to egre_object:attempt/2 calls
-   loop_with_state(Body, fun search/2, State).
-
-%% We don't need to see catch-all clauses in the protocol
-%% attempt(_) -> ...
-attempt_clause({clause, _Line1, [{var, _Line2, '_'}], _, _}, _State) ->
-    [];
-
-%% We don't need to see catch-all clauses in the protocol.
-%% Sometimes we'll catch anything that falls through in order to output
-%% missed events. We can ignore these.
-attempt_clause({clause, _Line1, [{var, _Line2, _Var}], _, _}, _State) ->
-    [];
-
-%% We don't need to see catch-all clauses in the protocol
-%% attempt({_, _, _Msg, _}) -> ...
-attempt_clause({clause,
-                _Line1,
-                [{tuple, _Line2, [{var, _Line3, '_'}, {var, _Line4, '_'}, {var, _Line5, '_Msg'}, {var, _Line6, '_'}]}],
-                _GuardGroups,
-                _Body}, _State) ->
-    [];
-
-%% We don't need to see catch-all clauses in the protocol
-%% attempt(_Foo = {_, _, _Msg, _}) -> ...
-attempt_clause({clause,
-                _Line1,
-                [{match, _Line2, {var, _, _},
-                  {tuple, _Line3, [{var, _Line4, '_'},
-                                   {var, _Line5, '_'},
-                                   {var, _Line6, '_Msg'},
-                                   {var, _Line7, '_'}]}}],
-                _GuardGroups,
-                _Body}, _State) ->
-    [];
-
-%% Strip off any Variable that the event is bound too: it screws up the sorting of events and we're just
-%% interested in the events themselves, not what they're bound to.
-%% attempt(Parents, Props, Message = {Bar, baz, Quux}) -> ...
-attempt_clause({clause,
-                Line1,
-                [{tuple, Line2, [CustomData, Props, {match, _Line3, {var, _, _}, Event}]}],
-                GuardGroups,
-                Body},
-               State) ->
-    attempt_clause({clause, Line1, [{tuple, Line2, [CustomData, Props, Event]}], GuardGroups, Body}, State);
-
-attempt_clause({clause, _Line, Head, GuardGroups, Body}, State) ->
-    [{tuple, _Line2, [CustomData, Props, Event, Context]}] = Head,
-
-    {AttemptHeadExprs, State1} = attempt_head(CustomData, Props, Event, Context, State),
-    {GuardGroupExprs, State2} =  guard_groups(GuardGroups, State1),
-    {BodyExprs, State3} = loop_with_state(Body, fun search/2, State2),
-
-    Module = maps:get(module, State3),
-    MaybeResentMessage = maps:get(resent_message, State3, undefined),
-    MaybeBroadcastMessage = maps:get(broadcast_message, State3, undefined),
-
-    ResentMessage =
-        case MaybeResentMessage of
-            undefined ->
-                <<>>;
-            Other ->
-                [<<"resend = ">>, Other]
-        end,
-    BroadcastMessage =
-        case MaybeBroadcastMessage of
-            undefined ->
-                <<>>;
-            Other_ ->
-                [<<"broadcast = ">>, Other_]
-        end,
-
-    Attempt = [Module, <<"|">>,
-               <<"attempt|">>,
-               AttemptHeadExprs, <<"|">>,
-               GuardGroupExprs, <<"|">>,
-               ResentMessage,
-               BroadcastMessage,
-               <<"\n">>],
-
-    AttemptEvent = hd(lists:reverse(AttemptHeadExprs)),
-
-    MaybeResentOrBroadcastEvent =
-        case {MaybeResentMessage, MaybeBroadcastMessage} of
-            {undefined, undefined} ->
-                <<>>;
-            {_, undefined} ->
-                %% Module, Type, Parents, Props, Event, Guards, resend | broadcast | attempt message
-                [Module, <<"|resend|||">>, MaybeResentMessage, <<"||attempt = ">>, AttemptEvent, <<"\n">>];
-            {undefined, _} ->
-                %% Module, Type, Parents, Props, Event, Guards, resend | broadcast | attempt message
-                [Module, <<"|broadcast|||">>, MaybeBroadcastMessage, <<"||attempt = ">>, AttemptEvent, <<"\n">>]
-        end,
-
-    % I'm not sure anything can be in BodyExprs because anything that doesn't come from a attempt
-    % or succeed clause is stored in the state.
-    [Attempt,  BodyExprs, MaybeResentOrBroadcastEvent].
-
-attempt_head(CustomData, Props, Event, Context, State) ->
-    %{Parents, Props, Event}.
-    CustomDataBin = print(CustomData),
-    PropsBin = print(Props),
-    EventBin = print(Event),
-    ContextBin = print(Context),
-    Output = separate(<<"|">>, [CustomDataBin, PropsBin, EventBin, ContextBin]),
-    {Output, State#{event => EventBin}}.
-
-%% I don't think you can get a function clause without a name
-%succeed_clause({clause, _Line, Head, GuardGroups, Body}) ->
-    %succeed_clause('', {clause, _Line, Head, GuardGroups, Body}).
-
-succeed_clause({clause, _Line1, [{var, _Line2, '_'}], _, _}, _State) ->
-    [];
-
-%% We don't need to see catch-all clauses in the protocol
-%% succeed({AnyVAr, _}) -> ...
-succeed_clause({clause, _Line1, [{tuple, _Line2, [_Props, {var, _Line3, Ignored}, _Context]}], _, _}, _State)
-  when Ignored == '_';
-       Ignored == '_Msg';
-       Ignored == '_Other' ->
-    [];
-
-succeed_clause({clause, _Line1,
-                [{tuple, _Line2, [Props, {match, _Line3, {var, _Line4, 'Msg'}, Event}, Context]}],
-                GuardGroups, Body}, State) ->
-    succeed_clause({clause, 0, [{tuple, 0, [Props, Event, Context]}], GuardGroups, Body}, State);
-
-succeed_clause({clause, _Line0, Head, GuardGroups, Body}, State) ->
-    [{tuple, _Line1, [Props, Event, Context]}] = Head,
-
-    {SucceedHeadExprs, State1} = succeed_head(Props, Event, Context, State),
-    {GuardGroupsExprs, State2} = guard_groups(GuardGroups, State1),
-
-    Succeed = [maps:get(module, State2),
-               <<"|">>,
-               <<"succeed|">>,
-               _NoParents = <<"|">>,
-               SucceedHeadExprs,
-               <<"|">>,
-               GuardGroupsExprs,
-               <<"\n">>],
-
-    {BodyExprs, _State} = loop_with_state(Body, fun search/2, State2),
-    [Succeed | BodyExprs].
-
-succeed_head(Props, Event, Context, State) ->
-    PropBin = print(Props),
-    EventBin = print(Event),
-    ContextBin = print(Context),
-
-    CSVOutput = separate(<<"|">>, [PropBin, EventBin, ContextBin]),
-    {CSVOutput, State}.
-
-case_clause({clause, _Line, [Head], _GuardGroups, Body}, State) ->
-     {HeadExprs, State1} = search(Head, State),
-
-     % I don't think we can call egre_object:attempt/2 in a guard clause
-     % and the only reason to descend below function heads is to look for calls
-     % to egre_object:attempt/2.
-     %case GuardGroups of
-     %    [] ->
-     %        [];
-     %    _ ->
-     %        guard_groups(GuardGroups)
-     %end ++
-
-    {BodyExprs, State2} = loop_with_state(Body, fun search/2, State1),
-
-    {[HeadExprs | BodyExprs], State2}.
-
-search({lc,_Line,Result,Quals}, State) ->
-    {Events1, State1} = search(Result, State),
-    {Events2, State2} = loop_with_state(Quals, fun lc_bc_qual/2, State1),
-    {[Events1 | Events2], State2};
-search({bc,Line,E0,Quals}, State) ->
-    search({lc, Line, E0, Quals}, State); %% other than 'bc', this is the same as the clause above
-search({block,_Line,Expressions}, State) ->
-    loop_with_state(Expressions, fun search/2, State);
-search({'if',_Line,Clauses}, State) ->
-    loop_with_state(Clauses, fun clause/2, State);
-search({'case',_Line,Expression,Clauses}, State) ->
-
-    {Events1, State1} = search(Expression, State),
-    {Events2, State2} = loop_with_state(Clauses, fun case_clause/2, State1),
-    {[Events1 | Events2], State2};
-search({'receive',_Line,Clauses}, State) ->
-    loop_with_state(Clauses, fun clause/2, State);
-search({'receive',_Line,Clauses,AfterWait,AfterExpressions}, State) ->
-    {Events1, State1} = loop_with_state(Clauses, fun clause/2, State),
-    {Events2, State2} = search(AfterWait, State1),
-    {Events3, State3} = loop_with_state(AfterExpressions, fun search/2, State2),
-    {[Events1 | [Events2 | Events3]], State3};
-search({'try',_Line,Expressions,_WhatIsThis,CatchClauses,AfterExpressions}, State) ->
-    {Events1, State1} = loop_with_state(Expressions, fun search/2, State),
-    {Events2, State2} = loop_with_state(CatchClauses, fun catch_clause/2, State1),
-    {Events3, State3} = loop_with_state(AfterExpressions, fun search/2, State2),
-    {[Events1 | [Events2 | Events3]], State3};
-
-search({'fun',_Line,Body}, State) ->
-    case Body of
-        {clauses,Clauses} ->
-            Fun = fun(Clause, State_) -> clause('', Clause, State_) end,
-            loop_with_state(Clauses, Fun, State);
-        _ ->
-            {[], State}
-    end;
-%search({call,_Line,Fun,Args}) ->
-search({call, _Line,
-      {remote, _RemLine,
-       {atom, _AtomLine, egre_object},
-       {atom, _FunAtomLine, attempt}},
-      [Arg1, Arg2]},
-     State) ->
-    %NoParents = <<"|">>,
-    NoProps = <<"|">>,
-    Arg1Bin = print(Arg1),
-    Arg2Bin = print(Arg2),
-    {[maps:get(module, State), <<"|new|">>, Arg1Bin, NoProps, <<"|">>, Arg2Bin, <<"\n">>], State};
-
-search({call, _Line,
-      {remote, _RemLine,
-       {atom, _AtomLine, egre_object},
-       {atom, _FunAtomLine, attempt_after}},
-      [_, Arg2, Arg3]}, State) ->
-    NoProps = <<"|">>,
-    Arg2Bin = print(Arg2),
-    Arg3Bin = print(Arg3),
-    {[maps:get(module, State), <<"|new|">>, Arg2Bin, NoProps, <<"|">>, Arg3Bin, <<"\n">>], State};
-
-search({call,_Line,__Fun, _Args}, State) ->
-    % Don't care about non-event calls
-    {[], State};
-search({'catch',_Line,Expression}, State) ->
-    %% No new variables added.
-    search(Expression, State);
-
-search({match, _Line, {var, _Line1, 'NewMessage'}, NewMessage}, State) ->
-    % we can ignore the var, since we know we won't need it in the CSV
-    NewMessageBin = print(NewMessage),
-    {[], State#{new_message => NewMessageBin}};
-
-search({match,_Line,Expr1,Expr2}, State) ->
-    {Expr1Expr, State1} = search(Expr1, State),
-    {Expr2Expr, State2} = search(Expr2, State1),
-    {[Expr1Expr | [Expr2Expr]], State2};
-
-search({op,_Line,'==',L,R}, State) ->
-    {LExpr, State1} = search(L, State),
-    {RExpr, State2} = search(R, State1),
-    {[LExpr | [RExpr]], State2};
-
-search({op, _Line, _Op, L, R}, State) ->
-    {LExpr, State1} = search(L, State),
-    {RExpr, State2} = search(R, State1),
-    {[LExpr | [RExpr]], State2};
-
-search({tuple, _Line0, [{atom, _Line1, resend}, Source, {var, _Line2, 'NewMessage'}]}, State = #{new_message := NewMessage}) ->
-    {SourceExpr, State1} = search(Source, State),
-    {SourceExpr, State1#{resent_message => NewMessage}};
-
-search({tuple, _Line0, [{atom, _Line1, broadcast}, {var, _Line2, 'NewMessage'}]}, State = #{new_message := NewMessage}) ->
-    {[], State#{broadcast_message => NewMessage}};
-
-search({tuple,_Line, TupleExpressions}, State) ->
-    loop_with_state(TupleExpressions, fun search/2, State);
-%% There's a special case for all cons's after the first: {tail, _}
-%% so this is a list of one item.
-search({cons,_Line,Head,{nil, _}}, State) ->
-    search(Head, State);
-search({cons,_Line,Head,{var, _Line2, '_'}}, State) ->
-    search(Head, State);
-search(_Cons = {cons,_Line,Head,Tail}, State) ->
-    {HeadExpr, State1} = search(Head, State),
-    {TailExpr, State2} = search(Tail, State1),
-    {[HeadExpr | [TailExpr]], State2};
-search(_Tail = {tail, {cons, _Line, Head, {nil, _}}}, State) ->
-    search(Head, State);
-search(_Tail_ = {tail, {cons, _Line, Head, Tail}}, State) ->
-    {HeadExpr, State1} = search(Head, State),
-    {TailExpr, State2} = search(Tail, State1),
-    {[HeadExpr | [TailExpr]], State2};
-search({tail, Call = {call, _Line, _Fun, _Args}}, State) ->
-     search(Call, State);
-search({tail, Tail}, State) ->
-    search(Tail, State);
-search({record, _Line, _Name, ExprFields}, State) ->
-    loop_with_state(ExprFields, fun expr_field/2, State);
-
-search({record_index,_Line, _Name, Field}, State) ->
-     search(Field, State);
-search({record_field,_Line,Expression, _RecName, Field}, State) ->
-    {ExprExpr, State1} = search(Expression, State),
-    {FieldExpr, State2} = search(Field, State1),
-    {[ExprExpr | [FieldExpr]], State2};
-
-% How does this happen? (Foo).bar ?
-%search({record_field,Line,Rec0,Field0}) ->
-    %Rec1 = search(Rec0),
-    %Field1 = search(Field0);
-search(_IgnoredExpr, State) ->
-    {[], State}.
-
-expr_field({record_field, _Lf, {atom, _La, _F}, Expr}, State) ->
-    search(Expr, State);
-expr_field({record_field, _Lf, {var,_La,'_'}, Expr}, State) ->
-    search(Expr, State).
-
-guard_groups(GuardGroups, State) ->
-    %map_separate(<<"; ">>, fun guard_group_conjunction/1, GuardGroups).
-    {Exprs, State1} = loop_with_state(GuardGroups, fun guard_group_conjunction/2, State),
-    {separate(<<"; ">>, Exprs), State1}.
-
-guard_group_conjunction(GuardGroupConjunctionExpressions, State) ->
-    Output = map_separate(<<", ">>, fun print/1, GuardGroupConjunctionExpressions),
-    {Output, State}.
-
-%% This is a list of generators _or_ filters
-%% which are simply expressions
-%% A generator is a target and a source
-lc_bc_qual({generate,_Line,Target,Source}, State) ->
-    %search(Target) ++ search(Source);
-
-    %{TargetExpr, State1} = search(Target, State),
-    %{SourceExpr, State2} = search(Source, State1),
-    %{[TargetExpr | [SourceExpr]], State2};
-
-    loop_with_state([Target, Source], fun search/2, State);
-
-lc_bc_qual({b_generate,_Line,Target,Source}, State) ->
-    %search(Target) ++ search(Source);
-    loop_with_state([Target, Source], fun search/2, State);
-lc_bc_qual(FilterExpression, State) ->
-    search(FilterExpression, State).
-
-%% Once we've found AST elements that we want in the CSV we need to convert them to text
-
-print({var, _Line, VarName}) ->
-    move_leading_underscore(a2b(VarName));
-
-print({atom, _Line, Atom}) ->
-    a2b(Atom);
-
-print({integer, _Line, Int}) ->
-    integer_to_binary(Int);
-
-print({match, _Line, Var, Tuple}) ->
-    [print(Var), <<" = ">>, print(Tuple)];
-
-print({record, _Line, RecordName, Fields}) ->
-    [<<"#">>, a2b(RecordName), <<"{">> | map_separate(fun print/1, Fields)] ++ [<<"}">>];
-
-print({record_field, _Line, {atom, _Line2, FieldName}, {var, _VarLine, VarName}}) ->
-    [a2b(FieldName), <<" = ">>, a2b(VarName)];
-
-print({record_field, _Line, {atom, _Line2, FieldName}, {match, _Line3, Var, Record}}) ->
-    [a2b(FieldName), <<" = ">>, print(Var), <<" = ">>, print(Record)];
-
-print({record_field, _Line, {atom, _Line2, FieldName}, Call}) ->
-    [a2b(FieldName), <<" = ">>, print(Call)];
-
-print({tuple, _Line, Expressions}) ->
-    [<<"{">> | map_separate(fun print/1, Expressions)] ++ [<<"}">>];
-
-print({op, _Line, Operator, Expr1, Expr2}) ->
-    [print(Expr1), <<" ">>, a2b(Operator), <<" ">>, print(Expr2)];
-
-print({call, _Line, {atom, _Line2, FunctionName}, Params}) ->
-    ParamBins = map_separate(<<", ">>, fun print/1, Params),
-    [a2b(FunctionName), <<"(">>, ParamBins, <<")">>];
-
-print({cons, _Line, Var1, Var2}) ->
-    [<<"[">>, print(Var1), <<" | ">>, print(Var2), <<"]">>];
-
-print({bin, _Line1, BinElements}) ->
-    [print(BinElement) || BinElement <- BinElements];
-
-print({bin_element, _Line1, {string, _Line2, String}, _, _}) ->
-    [<<"<<\"">>, list_to_binary(String), <<"\">>">>];
-
-% e.g. Match in binary: e.g. <<Bin/binary>>
-print({bin_element, _Line, {var, _line2, Var}, default, [binary]}) ->
-    [a2b(Var), <<"/binary">>];
-
-print({map, _Line1, Matches}) ->
-    [<<"#{">>, map_separate(fun print/1, Matches), <<"}">>];
-
-print({map_field_exact, _Line1, Key, Val}) ->
-    [print(Key), <<" := ">>, print(Val)];
-
-print({nil, _Line}) ->
-    <<"[]">>.
-
-
-%separate(List) when is_list(List) ->
-    %separate(<<", ">>, List).
-
-separate(Separator, List) ->
-    lists:join(Separator, List).
-
-map_separate(Fun, List) ->
-    map_separate(<<", ">>, Fun, List).
-
-map_separate(Separator, Fun, List) ->
-    separate(Separator, lists:map(Fun, List)).
-
-a2b(Atom) ->
-    list_to_binary(atom_to_list(Atom)).
-
-move_leading_underscore(JustUnderscore = <<$_>>) ->
-    JustUnderscore;
-move_leading_underscore(<<$_, Rest/binary>>) ->
-    <<Rest/binary, "_">>;
-move_leading_underscore(Bin) ->
-    Bin.
-
-loop_with_state(Forms, Fun, State) ->
-    %io:format(user, "Forms = ~p~n", [Forms]),
-    lists:foldl(fun(Form, {Exps, StateInner}) ->
-                    %io:format(user, "Form = ~p~n", [Form]),
-                    {Exp, StateAcc} = Fun(Form, StateInner),
-                    {Exps ++ [Exp], StateAcc}
-                end,
-                _Acc = {[], State},
-                Forms).
+filename({attribute, _L, file, {Filename, _}}) ->
+    filename:rootname(filename:basename(Filename)).

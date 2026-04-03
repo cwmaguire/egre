@@ -1,6 +1,6 @@
 PROJECT = egre
 COMPILE_FIRST = egre_object egre_rules
-DEPS = jsx epgsql
+DEPS = jsx epgsql recon
 
 ## copied from erlang.mk and added +native.
 ## It made one of the test faster when this was part of GERLSHMUD
@@ -16,7 +16,8 @@ ERLC_OPTS = -Werror \
 TEST_ERLC_OPTS = +debug_info \
 								 +warn_export_vars \
                  +warn_shadow_vars \
-								 +warn_obsolete_guard
+								 +warn_obsolete_guard \
+								 -pa test/
 								 #+'{parse_transform, gerlshmud_log_transform}'
 
 include erlang.mk

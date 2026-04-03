@@ -2,6 +2,249 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2026-03-26   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+The "event pair" code lives in EGRE, but the rules live in a particular MUD. The
+MUD has to use the EGRE code to parse transform its rules and find the pairs.
+The parse transform code calls the event pair code.
+
+./c works to compile everything. Rules handlers are being parse transformed and
+written out to the root dir. No event pairs are generated: everything is written
+to the "no_events" file.
+
+  If you want you can read an events file bert file (Binary ERlang Term format).
+
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  ░
+  ░ $erl
+  ░ Erlang/OTP 28 [erts-16.0.2] [source] [64-bit] [smp:4:4] [ds:4:4:10] [async-threads:1] [jit:ns]
+  ░
+  ░ Eshell V16.0.2 (press Ctrl+G to abort, type help(). for help)
+  ░ 1> B = file:read_file("events/attack_events.bert").
+  ░ {ok,<<131,108,0,0,0,18,108,0,0,0,4,109,0,0,0,6,97,116,
+  ░       116,97,99,107,119,7,97,116,116,...>>}
+  ░ 2> {ok, C} = B.
+  ░ {ok,<<131,108,0,0,0,18,108,0,0,0,4,109,0,0,0,6,97,116,
+  ░       116,97,99,107,119,7,97,116,116,...>>}
+  ░ 3> D = binary_to_term(C).
+  ░ [[<<"attack">>,attempt,
+  ░   {{1,2,3},
+  ░    [{1,<<"Character">>},{2,<<"Attack">>},{3,<<"Target">>}],
+  ░    []},
+  ░   {{1,attack,2,with,3,infinity,times},
+  ░    [{1,<<"Character">>},{2,<<"Target">>},{3,<<"self()">>}],
+  ░    [{3,pid}]}],
+  ░
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+Now run `chains()` to read the events/*.bert files. I don't think I have a
+script for this.
+
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  ░
+  ░ $erl -pa ebin/ -pa deps/*/ebin
+  ░ Erlang/OTP 28 [erts-16.0.2] [source] [64-bit] [smp:4:4] [ds:4:4:10] [async-threads:1] [jit:ns]
+  ░
+  ░ Eshell V16.0.2 (press Ctrl+G to abort, type help(). for help)
+  ░ 1> egre_protocol_event_chains:chains().
+  ░ # of Pairs0 = 334
+  ░ # of ChainHeads = 140
+  ░ Set size = 20975
+  ░ # of Chains = 20975
+  ░ Command is taking a long time, type Ctrl+G, then enter 'i' to interrupt
+  ░ ok
+  ░
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+egre_protocol_event_pairs.erl writes out the "pairs" file.
+egre_protocol_event_chains.erl writes out the "egre_protocol_chains" file.
+
+
+┏━━━━━━━━━━━━━━━━┓
+┃   2026-03-25   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+tl;dr - read:
+  1)       egre/notes/protocol_is_too_hard_to_follow
+  2) egre_mud_1/notes/protocol_is_too_hard_to_follow
+
+It looks like we were working on two different tests:
+1. Test that the parse transform "unwinds" all function calls
+
+  see test/egre_protocol_parse_transform_SUITE_data/*_{in,out}.erl
+
+  Each test has two Erlang files:
+  1. what the original file starts as, and gets parse transformed
+  2. what the source code of the expected AST would look like
+     i.e. use the identity transform to figure out what the AST _should_ look like;
+     it's been written in Erlang so that all function calls are "unwound" into case statements
+
+  Example:
+
+  If I have some Erlang code, `X = 1.` and a parse transform that converts that
+  to the *AST* for `Y = 2`, then I should also have some code `Y = 2` which I
+  can run the identity transform on to get the target AST.
+
+  So:
+  - `X = 1` -> parse transform ->    {match, {var, 'Y'}, {int, 2}}
+  - `Y = 2` -> identity transform -> {match, {var, 'Y'}, {int, 2}}
+
+  Now I can just compare the parse transform AST to the expected AST.
+
+  The identity transform allows us to write the expected AST in Erlang, rather
+  than having to write directly in AST.
+
+2. Test that unwound rules handler events
+
+  There are chunks of AST in test/egre_protocol_event_parsing.hrl
+  We run the "event chains" logic on it and see if we get back the expected chains
+
+  A "chain" is when an attempt leads to a success, and then possibly to another attempt, and so on.
+
+  We want to make sure we can see how events spawn other events based on rule modules that have been parsed transformed.
+
+I don't know if I have any scripts anywhere to try and run event chains on the
+egre_mud_1 rules, but I'd be surprised if I didn't. I'm assuming that I only
+know what to test because I'm trying out my parse transform and event chain
+logic on actual rules in egre_mud_1, and then finding what breaks. For example,
+in egre_protocol_parse_transform.erl there's this comment:
+
+  %% FIXME
+  %% rules_attribute_look is not working
+  %% is_owner/2 and describe/4 are not being inlined
+
+However, there is also this comment in egre_protocol_event_pairs.erl
+
+  %% TODO go look at actual rules modules to see what kind of type inference cases I need
+  %% to watch for.
+
+In egre_mud_1 I have a bunch of "rules_*" files with AST in them that are from
+Sept 2025 and seem to be "unwound" by the parse transform. There's also the `c`
+script that copies code from egre and egre_mud and then
+
+Compiling the rules files with the parse_transform cause the
+egre_protocol_event_pairs to be called, which writes out to a .bert file
+egre_mud_1/events/ has a bunch of .bert files
+Since the egre_mud_1/rules_* files have the same date as the egre_mud_1/events/*.bert files,
+I'm guessing they were created around the same time. I don't know if I had a
+script to convert .bert to text, or if maybe I was just doing that in the Erlang
+REPL.
+
+  Ah! From egre_mud_1/notes/protocol_is_too_hard_to_follow:
+
+    """
+    parse_transform is working. Compile the files, then run egre_protocol_event_chains.erl in the EGRE project to read from
+    the BERT files and generate the  'egre_protocol_chains' file.
+    """
+
+  Okay, so src/egre_protocol_event_chains.erl has a bunch more logic for dealing
+  with the event pairs after they're written out to the .bert files.
+  src/egre_protocol_event_chains.erl looks for events/*.bert, which is in the
+  egre_mud_1 project: I think it's assumed that you're going to be trying to get
+  the protocol (i.e. what events spawn what events) from a specific MUD, not
+  from the graph rules engine (EGRE) or the MUD server (EGRE_MUD). We're
+  answering the question "What is the protocol for _this_ MUD." A MUD is a set
+  of rules that runs on a MUD server, which runs the graph rules engine.
+
+┏━━━━━━━━━━━━━━━━┓
+┃   2025-09-14   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+Debugging and testing the 'egre_protocol_chains' file generation.
+See [protocol_too_hard_to_follow].
+
+┏━━━━━━━━━━━━━━━━┓
+┃   2024-12-21   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+See [protocol_too_hard_to_follow] for updates on using parse transforms
+to figure out the event chains.
+
+┏━━━━━━━━━━━━━━━━┓
+┃   2024-12-14   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+I'm trying to write a parse transform to generate "event chains" so I can
+see when events being generated and matched by disparate rules modules don't
+fit into a chain: e.g. when I've modified an event in a chain such that the
+other rules modules participating in that event chain don't recognize the
+modified event and miss their cue.
+
+This is fraught with challenges:
+- in order to ignore variable names, events need to be anonimized
+  - e.g. {Item, move, to, Room} becomes {1, move, to, 2}
+  - This allows messages to match on shape, as opposed to various
+    variable names
+
+- if I don't capture the types of the variables and function calls that are
+  represented by numbers, then attempt/1 and succeed/1 functions that only
+  differentiate on type will cycle
+
+- I need to look at guard clauses and matches outside of the event to determine
+  what types are required for the attempt/1 or succeed/1 clause to match.
+  - e.g. #{owner := Owner}, {Owner, move, n}
+    I know that the Owner in the event must be a pid, because 'owner' in the
+    map always represents a pid.
+  - We won't have a type for everything variable, so we can't rely and finding
+    matching types: what we can do is avoid mis-matched types, i.e. conflicts.
+
+- in order to capture events in utility functions we have to path through
+  the utility functions to find events:
+  e.g. attempt/1 calls foo(A) ->
+           foo(B) calls bar(B) ->   (i.e. the A from the caller is now B in the args)
+               bar(C) fires event(do, C)
+  - C is actually B, which is actually A
+
+  This won't work for wrapped or unwrapped data:
+
+  e.g. attempt/1 calls foo(A) ->
+           foo(B) calls bar({X, B}) ->   (i.e. the A from the caller is now B in the args)
+               bar(C) fires event(do, C)
+  - C has a compound type of {type of X, type of A}.
+    - That is, we can trace back C to A, but we don't know what
+      X is.
+    - Hmm, we could just have that as a type: {_, type of A}, e.g.
+      {_, bin}.
+      - Nothing will conflict with _
+      - It's fairly simple to walk two data structures and check
+        for conflicts
+
+So far, this gives me the following stages
+
+- unwind functions and translate their variables
+- catalog all variable types in matches and guard clauses, even in the body
+- match numeric placeholders for event variables with their types
+- build chains of events by comparing variable-agnostic events and making
+  sure no types conflict
+
+I think I might benefit from turning the AST into something that's easier
+to work with.
+
+  For one thing, I'll get rid of all the stupid line numbers.
+  I can replace matches and types with simple type-pairs:
+  is_pid(Dog) -> {Dog, pid}
+  #{owner := Owner} -> {Owner, pid}
+  i.e. go through and replace the AST with what it means to me.
+
+  Once I've done that, I can ignore guards and matches.
+
+  Secondly, I can unwind all the functions and work all their variables
+  back to their originals. This might be very challenging if variables
+  are wrapped in new structures or unwrapped. I might start just with
+  variables that survive untouched and only renamed.
+
+When I inline functions, do I inline the AST and then translate, or
+translate and then inline?
+
+  A function is just a case statement.
+
+  I don't care about cases except for type info from guards.
+
+  I don't know if I have remote functions that generate events.
+  I suspect not.
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2024-11-28   ┃
 ┗━━━━━━━━━━━━━━━━┛
 

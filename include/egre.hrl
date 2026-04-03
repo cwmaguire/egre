@@ -21,7 +21,7 @@
          new_pid :: pid()}).
 
 -record(result,
-        {result = succeed :: atom(),
+        {result = succeed :: atom() | tuple(),
          subscribe = true :: boolean(),
          event :: undefined | tuple(),
          props = [] :: list(),
