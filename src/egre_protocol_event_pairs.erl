@@ -49,9 +49,9 @@ get_event_pairs(ApiFun = {{Module, Function, ?API_FUNCTION_ARITY}, {clause, Argu
           {Events, AttemptTypes})
   when Function == attempt;
        Function == succeed ->
-    io:format(user, "Conjunction = ~p~n", [Conjunction]),
+    %io:format(user, "Conjunction = ~p~n", [Conjunction]),
     TypeMap = lists:foldl(fun type_inference/2, #{}, Conjunction),
-    io:format(user, "TypeMap = ~p~n", [TypeMap]),
+    % io:format(user, "TypeMap = ~p~n", [TypeMap]),
     State = #state{type_map = TypeMap},
 
     Event = event(Function, Arguments),
@@ -92,11 +92,11 @@ get_event_pairs(ApiFun = {{Module, Function, ?API_FUNCTION_ARITY}, {clause, Argu
 
     case {Function, ActionEvent2, ReactionEvents} of
         _NoActionEvent = {_, {[], _, _}, _} ->
-            io:format("No action event for ~p:~p/~p~n", [Module, Function, 1]),
+            % io:format("No action event for ~p:~p/~p~n", [Module, Function, 1]),
             write_no_events(ApiFun),
             {Events, AttemptTypes2};
         _NoReactionEvent = {attempt, _, [undefined]} ->
-            io:format("No reaction events for ~p:~p/~p~n", [Module, Function, 1]),
+            % io:format("No reaction events for ~p:~p/~p~n", [Module, Function, 1]),
             write_no_events(ApiFun),
             {Events, AttemptTypes2};
         _ ->
