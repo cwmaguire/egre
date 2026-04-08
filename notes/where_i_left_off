@@ -2,6 +2,34 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2026-04-03   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+I went through a bunch of rigamarole to get WhatsApp's erlang-language-platform
+built. It uses eqWAlizer (built with Scala) and Rust, so Grok helped me make
+sure I had both of those.
+
+┏━━━━━━━━━━━━━━━━┓
+┃   2026-04-02   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+I went back and fixed my messed up commits from, I think, Grok changing my local
+git name and email. I just copied master and the chain_of_events branches, reset
+the originals back to before the offending commits, cherry-picked stuff over,
+fixed the author but kept the date the same, re-merged chain_of_events with the
+fixed commits, ..., then force pushed.
+
+There are 284608 lines in the chain_of_events file. This seems like too many.
+
+Apparently erlang-ls/erlang_ls is outdated, so I'm switching to
+WhatsApp/erlang-language-platform  ... <sigh> it never ends.
+
+  So I need the JDK to get the Scala built tool to build Eqwalizer
+
+  I tried to install the scala jfrog apt repo but they have old GPG keys, so I
+  installed "sdkman" instead, and then installed sbt with "sdk install sbt"
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2026-03-26   ┃
 ┗━━━━━━━━━━━━━━━━┛
 
