@@ -19,11 +19,8 @@ inline_flatten([FilenameAttribute | Forms]) ->
     Module = module(Forms),
 
     AstFuns = lists:filter(fun is_fun/1, Forms),
-    AstFuns2 = [strip_lines(F) || F <- AstFuns],
-    FunKVs = lists:map(fun(Fun) ->
-                               fun2kv(Module, Fun)
-                       end,
-                       AstFuns2),
+    AstFunsStripped = [strip_lines(F) || F <- AstFuns],
+    FunKVs = [fun2kv(Module, F) || F <- AstFunsStripped],
     Funs = maps:from_list(FunKVs),
     ApiFunKVs = lists:filter(fun is_api_fun/1, FunKVs),
     ApiFuns = maps:from_list(ApiFunKVs),
