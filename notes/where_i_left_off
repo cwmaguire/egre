@@ -2,6 +2,103 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2026-06-23   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+Okay, I understand the inline functions and the scope paths. What happens after we have scope paths?
+
+- We only want to focus on api functions: attempt/1, succeed/1
+- We want to inline all of the code in functions that are called by those, so we can treat them as
+  one big function
+- We need to know what types are used because event handlers can match on types
+
+  If I can generate two events, one with a string, and one with a binary, then I need to keep those
+  two events separate.
+
+  How do I know what types are used in the generated event? I have to split the code anywhere where
+  I decide what a variable type is, and create a path for each different possibility.
+
+It doesn't look like I'm figuring out any types in _parse_transform.erl, here's a sample path:
+
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  ░
+  ░ {{<<"item_look">>,attempt,1},
+  ░   {clause,
+  ░    [{tuple,
+  ░      [{map,[]},
+  ░       {var,'Props'},
+  ░       {tuple,[{var,'Source'},{atom,look},{var,'Self'}]},
+  ░       {var,'_'}]}],
+  ░    [[{op,'==',{var,'Self'},{call,{atom,self},[]}}]],
+  ░    [{match,
+  ░      {var,'Log'},
+  ░      {cons,
+  ░       {tuple,[{atom,event_type},{atom,look}]},
+  ░       {cons,{tuple,[{atom,event_source},{var,'Source'}]},{nil}}}},
+  ░     {record,result,
+  ░      [{record_field,{atom,props},{var,'Props'}},
+  ░       {record_field,{atom,log},{var,'Log'}}]}]}}
+  ░
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+egre_protocol_parse_transform calls egre_protocol_event_pairs:extract(InlinedApiFunctions)
+
+egre_protocol_event_chains.erl writes out to egre_protocol_chains, except egre_protocol_chains
+hasn't been modified since March
+
+  Hmm, am I supposed to run _event_chains.erl manually?
+
+  Hmm, yeah, it looks like it.
+
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  ░
+  ░ Main(a) 2008 ~/dev/egre_mud_1 [master] 
+  ░ $erl -pa deps/egre/ebin/
+  ░ Erlang/OTP 28 [erts-16.4] [source] [64-bit] [smp:4:4] [ds:4:4:10] [async-threads:1] [jit:ns]
+  ░ 
+  ░ Eshell V16.4 (press Ctrl+G to abort, type help(). for help)
+  ░ 1> egre_protocol_event_chains:chains().
+  ░ # of Pairs0 = 334
+  ░ # of ChainHeads = 140
+  ░ Set size = 20975
+  ░ # of Chains = 20975
+  ░ ok
+  ░ 2> 
+  ░
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+  This re-wrote egre_protocol_chains
+
+┏━━━━━━━━━━━━━━━━┓
+┃   2026-06-22   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+Generating Event Chains
+
+- Touch src/rules/*
+- Run ./c
+  recompiles everything, which calls the egre_protocol_parse_transform.erl parse transform.
+  - creates a "sorted scope paths" file, with the base name of the Erlang file
+    e.g. rules_weapon_effect.erl -> rules_weapon_effect
+  - Uses the path from EGRE_PARSE_TRANSFORM_OUT_DIR
+    - e.g. today I set this to `inlined_rules` and made a directory to match
+  - I don't remember what "scope paths" are, but that's what's being saved, and then passed to
+    egre_protocol_event_pairs:extract/1
+
+    Ah, see c4ab06936c98
+
+    Scope paths break up functions that can branch based on variable types and treat each path as a
+    different copy of the function.
+
+egre_protocol_parse_transform first inlines all functions in a rules module. Functions can be
+modeled as inline case clauses (because that's what they are, essentially).
+
+  We only inline functions that are used by api functions, like attempt and succeed.
+
+Okay, so once we've inlined the attempt/succeed (i.e. API) functions of each rules module, and then
+created a single "path" for each variable type "scope", we can work on creating event pairs.
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2026-04-03   ┃
 ┗━━━━━━━━━━━━━━━━┛
 
