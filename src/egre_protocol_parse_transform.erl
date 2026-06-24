@@ -22,7 +22,7 @@ inline_flatten([FilenameAttribute | Forms]) ->
     AstFunsStripped = [strip_lines(F) || F <- AstFuns],
     FunKVs = [fun2kv(Module, F) || F <- AstFunsStripped],
     Funs = maps:from_list(FunKVs),
-    ApiFunKVs = lists:filter(fun is_api_fun/1, FunKVs),
+    [_ | _] = ApiFunKVs = lists:filter(fun is_api_fun/1, FunKVs),
     ApiFuns = maps:from_list(ApiFunKVs),
 
     InlinedFuns = maps:map(fun(K, V) ->
@@ -30,8 +30,8 @@ inline_flatten([FilenameAttribute | Forms]) ->
                            end,
                            ApiFuns),
 
-    FunClauses = lists:foldl(fun flatten_clauses/2, [], maps:to_list(InlinedFuns)),
-    ScopePaths = lists:foldl(fun scope_paths/2, [], FunClauses),
+    [_ | _] = FunClauses = lists:foldl(fun flatten_clauses/2, [], maps:to_list(InlinedFuns)),
+    [_ | _] = ScopePaths = lists:foldl(fun scope_paths/2, [], FunClauses),
     SortedScopePaths = lists:sort(ScopePaths),
 
     Path = path(),
@@ -224,13 +224,13 @@ clause_scope_paths({clause, Head, MaybeGuards, Body}, ScopePaths) ->
             _ ->
                 [MaybeGuards]
         end,
-    NewScopePaths = lists:foldl(fun body_scope_paths/2, [], Body),
+    [_ | _] = NewScopePaths = lists:foldl(fun body_scope_paths/2, [], Body),
     ScopePathClauses = [{clause, Head, Guards, ScopePath} || ScopePath <- NewScopePaths],
     ScopePaths ++ ScopePathClauses.
 
 body_scope_paths({'case', Expr, Clauses}, ScopePaths) ->
-    NewExprPaths = lists:foldl(fun body_scope_paths/2, [], [Expr]),
-    NewScopePaths = lists:foldl(fun clause_scope_paths/2, [], Clauses),
+    [_ | _] = NewExprPaths = lists:foldl(fun body_scope_paths/2, [], [Expr]),
+    [_ | _] = NewScopePaths = lists:foldl(fun clause_scope_paths/2, [], Clauses),
     NewCaseScopePaths =
         [[{'case', ExprPath, [NewScopePath]}] || [ExprPath] <- NewExprPaths, NewScopePath <- NewScopePaths],
     case ScopePaths of
@@ -248,7 +248,7 @@ body_scope_paths({tuple, []}, ScopePaths) ->
     [ScopePath ++ [{tuple, []}] || ScopePath <- ScopePaths];
 body_scope_paths({tuple, Items}, ScopePaths) ->
     ItemScopePaths = [body_scope_paths(I, []) || I <- Items],
-    ElementLists = lists:foldl(fun cartesian_product/2, [], ItemScopePaths),
+    [_ | _] = ElementLists = lists:foldl(fun cartesian_product/2, [], ItemScopePaths),
     TuplePaths = [[{tuple, Elements}] || Elements <- ElementLists],
     case ScopePaths of
         [] ->
@@ -257,8 +257,8 @@ body_scope_paths({tuple, Items}, ScopePaths) ->
             [ScopePath ++ TuplePath || TuplePath <- TuplePaths, ScopePath <- ScopePaths]
     end;
 body_scope_paths({match, Expr1, Expr2}, ScopePaths) ->
-    NewExpr1Paths = lists:foldl(fun body_scope_paths/2, [], [Expr1]),
-    NewExpr2Paths = lists:foldl(fun body_scope_paths/2, [], [Expr2]),
+    [_ | _] = NewExpr1Paths = lists:foldl(fun body_scope_paths/2, [], [Expr1]),
+    [_ | _] = NewExpr2Paths = lists:foldl(fun body_scope_paths/2, [], [Expr2]),
     NewMatchScopePaths =
         [[{match, Expr1Path, Expr2Path}] || [Expr1Path] <- NewExpr1Paths, [Expr2Path] <- NewExpr2Paths],
     case ScopePaths of
@@ -307,7 +307,7 @@ module(_) ->
 
 remove_prefix(Prefix, Bin) ->
     case Bin of
-        <<Prefix:(size(Prefix))/binary, Rest/binary>> ->
+        <<Prefix:(byte_size(Prefix))/binary, Rest/binary>> ->
             Rest;
         Bin_ when Bin_ == Bin ->
             Bin

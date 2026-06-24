@@ -259,7 +259,7 @@ reaction_events({match, {var, Var},
                  Case = {'case', _, [{clause, _, _, ClauseExprs}]}},
                 State = #state{variables = Variables}) ->
     State2 = reaction_events(Case, State),
-    LastClauseExpr = hd(lists:reverse(ClauseExprs)),
+    LastClauseExpr = lists:last(ClauseExprs),
     Variables2 = Variables#{Var => LastClauseExpr},
     State2#state{variables = Variables2};
 reaction_events({match, {var, Var},
@@ -336,7 +336,7 @@ indexed_event({tuple, Event}, #state{type_map = TypeMap}) ->
            _Types = [],
            TypeMap},
     {_NextIdx,
-     IndexedEvent,
+     [_ | _] = IndexedEvent,
      IndexedVariables,
      IndexedTypes,
      _TypeInf} =
@@ -455,7 +455,7 @@ index_variable({tuple, Exprs},
            IndexedTypes0,
            TypeInfo0},
     {NextIdx,
-     IndexedTuple,
+     [_ | _] = IndexedTuple,
      IndexedVariables,
      IndexedTypes,
      TypeInf} =

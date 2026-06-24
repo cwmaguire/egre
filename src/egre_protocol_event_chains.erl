@@ -27,9 +27,9 @@ read_pairs() ->
     filelib:fold_files("events", ~S".*\.bert$", false, fun read_file/2, _Data = []).
 
 read_file(Filename, Pairs) ->
-    {ok, Binary} = file:read_file(Filename, [read]),
-    PairList = binary_to_term(Binary),
-    Pairs ++ [list_to_tuple(P) || P <- PairList].
+    {ok, Binary} = file:read_file(Filename),
+    [_ | _] = PairList = binary_to_term(Binary),
+    Pairs ++ [list_to_tuple(P) || P <- PairList, is_list(P)].
 
 normalize_types(Pairs) ->
     [normalize_pair_types(P) || P <- Pairs].
@@ -151,7 +151,7 @@ serialize_pair({Mod, Fun, AE, RE}, Indent) ->
     SpaceSize = 1,
     ColonSize = 1,
     NextIndent = [Indent, <<?INDENT>>],
-    Padding = list_to_binary(string:pad("", size(Mod) + ColonSize + size(FunBin) + SpaceSize)),
+    Padding = list_to_binary(string:pad("", byte_size(Mod) + ColonSize + byte_size(FunBin) + SpaceSize)),
     [FunBin, <<":">>, Mod, <<" ">>,
      ActionBin, <<" ->                  ">> , ActionVars, <<"\n">>,
      NextIndent, Padding,
