@@ -29,7 +29,8 @@ read_pairs() ->
 read_file(Filename, Pairs) ->
     {ok, Binary} = file:read_file(Filename),
     [_ | _] = PairList = binary_to_term(Binary),
-    Pairs ++ [list_to_tuple(P) || P <- PairList, is_list(P)].
+    MaybeDupes = Pairs ++ [list_to_tuple(P) || P <- PairList, is_list(P)],
+    lists:usort(MaybeDupes).
 
 normalize_types(Pairs) ->
     [normalize_pair_types(P) || P <- Pairs].
