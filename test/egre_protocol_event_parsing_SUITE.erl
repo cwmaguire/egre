@@ -15,6 +15,7 @@
 -export([broadcast_raw_event/1]).
 -export([type_inference_self/1]).
 -export([type_inference_is_pid/1]).
+-export([type_inference_is_binary/1]).
 -export([type_inference_equals/1]).
 -export([type_inference_plus/1]).
 -export([type_inference_recursive/1]).
@@ -28,7 +29,9 @@ all() ->
      resend_variable_event,
      modify_raw_event,
      broadcast_raw_event,
+     type_inference_self,
      type_inference_is_pid,
+     type_inference_is_binary,
      type_inference_equals,
      type_inference_plus,
      type_inference_event_plus,
@@ -82,7 +85,7 @@ resend_raw_event(_Config) ->
     expect_event(?RESEND_RAW_EVENT).
 
 resend_variable_event(_Config) ->
-    egre_dbg:add(egre_protocol_event_pairs, reaction_events),
+    % egre_dbg:add(egre_protocol_event_pairs, reaction_events),
     expect_event(?RESEND_VARIABLE_EVENT).
 
 modify_raw_event(_Config) ->
@@ -139,6 +142,23 @@ type_inference_is_pid(_Config) ->
                        {{1, 2},
                         [{1, <<"Pid1">>}, {2, <<"NotPid">>}],
                         [{1, pid}]}
+                      ]],
+    ?assertEqual(ExpectedEvents, Events).
+
+type_inference_is_binary(_Config) ->
+    Events = egre_protocol_event_pairs:get_events(?TYPE_INFERENCE_IS_BINARY),
+    ExpectedEvents = [[<<"look">>,
+                       attempt,
+
+                       %% Action event
+                       {{1},
+                        [{1, <<"TargetName">>}],
+                        [{1, binary}]},
+
+                       %% Reaction event
+                       {{1},
+                        [{1, <<"TargetName">>}],
+                        [{1, binary}]}
                       ]],
     ?assertEqual(ExpectedEvents, Events).
 

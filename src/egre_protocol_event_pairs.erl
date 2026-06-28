@@ -16,15 +16,15 @@
 
 extract(ApiFuns) ->
     [{{Module, Fun, _}, _} | _] = ApiFuns,
-    io:format(user, "Module:Fun = ~p:~p~n", [Module, Fun]),
+    % io:format(user, "Module:Fun = ~p:~p~n", [Module, Fun]),
     %egre_dbg:add(egre_protocol_event_pairs, maybe_add_attempt_types),
     egre_dbg:add(egre_protocol_event_pairs, type_inference),
-    egre_dbg:add(egre_protocol_event_pairs, type_inference_equals),
+    % egre_dbg:add(egre_protocol_event_pairs, type_inference_equals),
     Events = get_events(ApiFuns),
     Keys = [K || {K, _} <- ApiFuns],
     case Events of
         [] ->
-            [io:format(user, "No events for ~p~n", [K]) || K <- Keys];
+            [io:format(user, "No events for ~s:~p - ~p~n", [Module, Fun, K]) || K <- Keys];
         _ ->
             ok
     end,
@@ -49,7 +49,7 @@ get_event_pairs(ApiFun = {{Module, Function, ?API_FUNCTION_ARITY}, {clause, Argu
           {Events, AttemptTypes})
   when Function == attempt;
        Function == succeed ->
-    %io:format(user, "Conjunction = ~p~n", [Conjunction]),
+    io:format(user, "Conjunction = ~p~n", [Conjunction]),
     TypeMap = lists:foldl(fun type_inference/2, #{}, Conjunction),
     % io:format(user, "TypeMap = ~p~n", [TypeMap]),
     State = #state{type_map = TypeMap},
@@ -145,6 +145,9 @@ maybe_var_event(Event) ->
 
 %[{op,'==',{var,'Self'},{call,{atom,self},[]}}],#{}
 
+type_inference(List, TypeMap) when is_list(List) ->
+    lists:foldl(fun type_inference/2, TypeMap, List);
+
 type_inference({op, '==', {var, Var1}, {var, Var2}}, TypeMap) ->
     case TypeMap of
         #{Var1 := _Type1, Var2 := _Type2} ->
@@ -167,6 +170,8 @@ type_inference({op, '==', {var, Var}, Operand1}, TypeMap) ->
     end;
 type_inference({call, {atom, is_pid}, [{var, Var}]}, TypeMap) ->
     TypeMap#{Var => pid};
+type_inference({call, {atom, is_binary}, [{var, Var}]}, TypeMap) ->
+    TypeMap#{Var => binary};
 type_inference({match, {var, Var1}, {var, Var2}}, TypeMap) ->
     case TypeMap of
         #{Var2 := Type} ->
@@ -195,7 +200,7 @@ type_inference_equals({nil}) ->
 type_inference_equals({cons, _}) ->
     list;
 type_inference_equals({bin, _}) ->
-    bin;
+    binary;
 type_inference_equals(_) ->
     undefined.
 

@@ -209,6 +209,25 @@
                           {var, 'NotPid'}]}]}}]
             }]}}]).
 
+-define(TYPE_INFERENCE_IS_BINARY,
+        [{{<<"look">>,attempt,1},
+          {clause,
+           [{tuple,
+             [{var, '_Map'},
+              {var,'_Props'},
+              {tuple,
+               [{var, 'TargetName'}]},
+              {var,'_Context'}]}],
+           [{call, {atom, is_binary}, [{var, 'TargetName'}]}],
+           [{record, result,
+             [{record_field,
+               {atom,result},
+               {tuple,
+                [{atom,broadcast},
+                 {tuple, [{var, 'TargetName'}
+                ]}]}}]
+            }]}}]).
+
 -define(TYPE_INFERENCE_EQUALS,
         [{{<<"attack_resource">>,attempt,1},
           {clause,
