@@ -1,7 +1,7 @@
 -module(egre_protocol_event_pairs).
 
--export([extract/1]).
--export([get_events/1]).
+-export([extract/2]).
+-export([get_events/2]).
 -export([write_events/1]).
 
 -define(API_FUNCTION_ARITY, 1).
@@ -14,13 +14,17 @@
 %%  src/rules/rules_body_part_inject_self.erl: error in parse transform 'egre_protocol_parse_transform':
 %%  exception error: no function clause matching egre_protocol_event_chains:index_variable({call,{atom,self},[]},{2,[1,move,from],[{1,<<"Item">>}],[],#{}}) (src/egre_protocol_event_chains.erl, line 197)
 
-extract(ApiFuns) ->
+extract(ApiFuns, PropertyTypes) ->
     [{{Module, Fun, _}, _} | _] = ApiFuns,
     % io:format(user, "Module:Fun = ~p:~p~n", [Module, Fun]),
     %egre_dbg:add(egre_protocol_event_pairs, maybe_add_attempt_types),
-    egre_dbg:add(egre_protocol_event_pairs, type_inference),
     % egre_dbg:add(egre_protocol_event_pairs, type_inference_equals),
-    Events = get_events(ApiFuns),
+    % egre_dbg:add(egre_protocol_event_pairs, event),
+    % egre_dbg:add(egre_protocol_event_pairs, maybe_var_event),
+    % egre_dbg:add(egre_protocol_event_pairs, conjunction_type_inference),
+    % egre_dbg:add(egre_protocol_event_pairs, indexed_event),
+    % egre_dbg:add(egre_protocol_event_pairs, maybe_add_attempt_types),
+    Events = get_events(ApiFuns, PropertyTypes),
     Keys = [K || {K, _} <- ApiFuns],
     case Events of
         [] ->
@@ -31,8 +35,8 @@ extract(ApiFuns) ->
     egre_dbg:stop(),
     write_events(Events).
 
-get_events(ApiClauses) ->
-    {Events, _} = lists:foldl(fun get_event_pairs/2, {[], #{}}, ApiClauses),
+get_events(ApiClauses, PropertyTypes) ->
+    {Events, _, _} = lists:foldl(fun get_event_pairs/2, {[], #{}, PropertyTypes}, ApiClauses),
     Events.
 
 write_events([]) ->
@@ -46,79 +50,160 @@ write_events(Events = [[Module | _] | _]) ->
 get_event_pairs({_K, {clause, [{var, '_'}], _, _}}, Acc) ->
     Acc;
 get_event_pairs(ApiFun = {{Module, Function, ?API_FUNCTION_ARITY}, {clause, Arguments, Conjunction, Body}},
-          {Events, AttemptTypes})
+                {Events, AttemptTypeIndexes, PropertyTypes})
   when Function == attempt;
        Function == succeed ->
-    io:format(user, "Conjunction = ~p~n", [Conjunction]),
-    TypeMap = lists:foldl(fun type_inference/2, #{}, Conjunction),
+
+    io:format(user, "~n~n~n", []),
+    io:format(user, "===================================================================================~n", []),
+    io:format(user, "Module: ~p~n", [Module]),
+    io:format(user, "Function: ~p~n", [Function]),
+    io:format(user, "===================================================================================~n", []),
+    io:format(user, "AttemptTypeIndexes: ~p~n", [AttemptTypeIndexes]),
+    io:format(user, "Arguments: ~p~n", [Arguments]),
+    io:format(user, "Conjunction: ~p~n", [Conjunction]),
+    io:format(user, "Body: ~n~p~n~n", [Body]),
+
+    % TypeMap1 = arguments_type_inference(Arguments, PropertyTypes),
+    TypeMap1 = #{},
+    TypeMap2 = lists:foldl(fun conjunction_type_inference/2, TypeMap1, Conjunction),
+
+    io:format(user, "~nTypeMap after conjunction type inference:~n~p~n", [TypeMap2]),
+
     % io:format(user, "TypeMap = ~p~n", [TypeMap]),
-    State = #state{type_map = TypeMap},
+    State = #state{type_map = TypeMap2},
 
     Event = event(Function, Arguments),
 
-    {ReactionEvents, TypeMap3} =
+    io:format(user, "~nEvent: ~p~n", [Event]),
+
+    io:format(user, "~n~n", []),
+    io:format(user, "====================================~n", []),
+    io:format(user, "fold reaction_events/2 over the ~p body~n", [Function]),
+    io:format(user, "====================================~n", []),
+
+    {ReactionEvents, TypeMap4} =
         case lists:foldl(fun reaction_events/2, State, Body) of
             #state{events = [],
-                   type_map = TypeMap2} ->
-                {[undefined], TypeMap2};
+                   type_map = TypeMap3} ->
+                {[undefined], TypeMap3};
             #state{events = StateEvents,
-                   type_map = TypeMap2} ->
-                {StateEvents, TypeMap2}
+                   type_map = TypeMap3} ->
+                {StateEvents, TypeMap3}
         end,
+
+    io:format(user, "ReactionEvents: ~p~n", [ReactionEvents]),
+    io:format(user, "TypeMap4: ~p~n", [TypeMap4]),
+
+    io:format(user, "~n~n", []),
+    io:format(user, "====================================~n", []),
+    io:format(user, "Run indexed_event/2 on the event ~p~n", [Function]),
+    io:format(user, "====================================~n", []),
 
     ActionEvent =
         {IndexedEvent, IndexedVariables, IndexedTypes} =
-            indexed_event(Event, State#state{type_map = TypeMap3}),
+            indexed_event(Event, State#state{type_map = TypeMap4}),
 
-    ActionEvent2 =
-        %case {Function, AttemptTypes} of
-        case {Function, AttemptTypes} of
-            %{succeed, #{IndexedEvent := AttemptTypes_}} ->
-            {succeed, #{IndexedEvent := AttemptTypeMap}} ->
-                {IndexedEvent, IndexedVariables, merge_types(IndexedTypes, AttemptTypeMap)};
+    io:format(user, "IndexedEvent: ~p~n", [IndexedEvent]),
+    io:format(user, "IndexedVariables: ~p~n", [IndexedVariables]),
+    io:format(user, "IndexedTypes: ~p~n", [IndexedTypes]),
+
+    io:format(user, "~n~n", []),
+    io:format(user, "====================================~n", []),
+    io:format(user, "maybe merge existing types with succeed types (merge_types/2)~n", []),
+    io:format(user, "====================================~n", []),
+
+    %% Infer succeed event types from matching attempt event types
+    ActionEvent2 = {_, _, MaybeMergedIndexTypes} =
+        case {Function, AttemptTypeIndexes} of
+            {succeed, #{IndexedEvent := TypeIndex}} ->
+                io:format(user, "Found index event variable type map for ~p~n~p~n", [IndexedEvent, TypeIndex]),
+                {IndexedEvent, IndexedVariables, merge_type_indexes(IndexedTypes, TypeIndex)};
             _ ->
+                io:format(user, "Not a succeed event (~p) or no matching AttemptTypeIndex for event~n", [Function]),
                 ActionEvent
         end,
 
-    AttemptTypes2 =
-        case {Function, TypeMap} of
-            {attempt, #{}} ->
-                AttemptTypes;
-            {attempt, TypeMap} ->
-                maybe_add_attempt_types(IndexedEvent, TypeMap, AttemptTypes);
+    io:format(user, "AttemptTypeIndexes: ~p~n", [AttemptTypeIndexes]),
+    io:format(user, "IndexedEvent: ~p~n", [IndexedEvent]),
+    io:format(user, "Matching AttemptTypeIndexes? ~p~n", [maps:get(IndexedEvent, AttemptTypeIndexes, no)]),
+    io:format(user, "Merged IndexedTypes:~nFrom (Original) ~p~nTo (New) ~p~n", [IndexedTypes, MaybeMergedIndexTypes]),
+
+    io:format(user, "~n~n", []),
+    io:format(user, "====================================~n", []),
+    io:format(user, "maybe add attempt types~n", []),
+    io:format(user, "Is this if we have only one succeed match for an attempt subscription?~n", []),
+    io:format(user, "Or, if we only have one attempt that has this exact shape?~n", []),
+    io:format(user, "====================================~n", []),
+
+    AttemptTypeIndexes2 =
+        case {Function, IndexedTypes} of
+            {attempt, []} ->
+                io:format(user, "No indexed types~n", []),
+                AttemptTypeIndexes;
+            {attempt, _} ->
+                io:format(user, "`attempt` with indexed types ~p~nMaybe add attempt types: ~p, ~p, ~p, ~n",
+                          [IndexedTypes, IndexedEvent, IndexedTypes, AttemptTypeIndexes]),
+                maybe_add_attempt_types(IndexedEvent, IndexedTypes, AttemptTypeIndexes);
             _ ->
-                AttemptTypes
+                io:format(user, "Not an attempt event (~p)~n", [Function]),
+                AttemptTypeIndexes
         end,
+
+    io:format(user, "~n~n", []),
+    io:format(user, "====================================~n", []),
+    io:format(user, "Did we update attempt type variable maps?~n", []),
+    io:format(user, "====================================~n", []),
+
+    case AttemptTypeIndexes of
+        AttemptTypeIndexes2 ->
+            io:format(user, "No~n", []);
+        _ ->
+            io:format(user, "Yes: ~nFrom: ~p~nTo: ~p~n",
+                      [AttemptTypeIndexes, AttemptTypeIndexes2])
+    end,
+
+    io:format(user, "~n~n", []),
+    io:format(user, "====================================~n", []),
+    io:format(user, "Decide if we have reaction events~n", []),
+    io:format(user, "====================================~n", []),
 
     case {Function, ActionEvent2, ReactionEvents} of
         _NoActionEvent = {_, {[], _, _}, _} ->
-            % io:format("No action event for ~p:~p/~p~n", [Module, Function, 1]),
+            io:format(user, "No action event for ~p:~p/~p~n", [Module, Function, 1]),
             write_no_events(ApiFun),
-            {Events, AttemptTypes2};
+            {Events, AttemptTypeIndexes2, PropertyTypes};
         _NoReactionEvent = {attempt, _, [undefined]} ->
-            % io:format("No reaction events for ~p:~p/~p~n", [Module, Function, 1]),
+            io:format(user, "No reaction events for ~p:~p/~p~n", [Module, Function, 1]),
             write_no_events(ApiFun),
-            {Events, AttemptTypes2};
+            {Events, AttemptTypeIndexes2, PropertyTypes};
         _ ->
+            io:format(user, "Adding new action->reaction pairs~n", []),
+            io:format(user, "Action Event: ~p~n", [ActionEvent2]),
+            io:format(user, "Reaction Events: ~p~n", [ReactionEvents]),
             NewEvents = [[Module, Function, ActionEvent2, ReactionEvent] || ReactionEvent <- ReactionEvents],
-            {Events ++ NewEvents, AttemptTypes2}
+            {Events ++ NewEvents, AttemptTypeIndexes2, PropertyTypes}
     end;
-get_event_pairs({{_Module, _Function, _}, {clause, _Bindings, _Guards, _Body}}, Events) ->
-    Events.
+get_event_pairs({{_Module, _Function, _}, {clause, _Bindings, _Guards, _Body}}, Acc) ->
+    Acc.
 
-maybe_add_attempt_types(Event, TypeMap, EventTypes) ->
-    case EventTypes of
-        #{Event := TypeMap} ->
-            EventTypes;
-        #{Event := _OtherMap} ->
-            maps:remove(Event, EventTypes);
+maybe_add_attempt_types(IndexedEvent, EventTypeIndex, AttemptTypeIndexes) ->
+    case AttemptTypeIndexes of
+        #{IndexedEvent := EventTypeIndex} ->
+            AttemptTypeIndexes;
+        % I'm guessing that if we have multiple attempt events with the same shape,
+        % but different types, then we can't infer what types a success event with the same
+        % shape will have
+        #{IndexedEvent := _ConflictingTypeIndex} ->
+            _EventsWithOnlyOnePossibleTypeIndex = maps:remove(IndexedEvent, AttemptTypeIndexes);
         _ ->
-            EventTypes#{Event => TypeMap}
+            AttemptTypeIndexes#{IndexedEvent => EventTypeIndex}
     end.
 
-merge_types(Types, TypeMap) ->
-    Map = maps:from_list(Types),
-    maps:to_list(maps:merge(Map, TypeMap)).
+merge_type_indexes(TypeIndex1, TypeIndex2) ->
+    Map1 = maps:from_list(TypeIndex1),
+    Map2 = maps:from_list(TypeIndex2),
+    maps:to_list(maps:merge(Map1, Map2)).
 
 write_no_events(ApiFun) ->
     %io:format(user, "NO EVENTS:~nApiFun = ~p~n", [ApiFun]),
@@ -145,63 +230,62 @@ maybe_var_event(Event) ->
 
 %[{op,'==',{var,'Self'},{call,{atom,self},[]}}],#{}
 
-type_inference(List, TypeMap) when is_list(List) ->
-    lists:foldl(fun type_inference/2, TypeMap, List);
+conjunction_type_inference(List, Acc) when is_list(List) ->
+    lists:foldl(fun conjunction_type_inference/2, Acc, List);
 
-type_inference({op, '==', {var, Var1}, {var, Var2}}, TypeMap) ->
+conjunction_type_inference({op, '==', {var, Var1}, {var, Var2}}, Acc = TypeMap) ->
     case TypeMap of
         #{Var1 := _Type1, Var2 := _Type2} ->
-            TypeMap;
+            Acc;
         #{Var1 := Type} ->
             TypeMap#{Var2 => Type};
         #{Var2 := Type} ->
             TypeMap#{Var1 => Type};
         _ ->
-            TypeMap
+            Acc
     end;
-type_inference({op, '==', Operand1, {var, Var}}, TypeMap) ->
-    type_inference( {op, '==', {var, Var}, Operand1}, TypeMap);
-type_inference({op, '==', {var, Var}, Operand1}, TypeMap) ->
-    case type_inference_equals(Operand1) of
+conjunction_type_inference({op, '==', Operand1, {var, Var}}, Acc) ->
+    conjunction_type_inference( {op, '==', {var, Var}, Operand1}, Acc);
+conjunction_type_inference({op, '==', {var, Var}, Operand1}, Acc = TypeMap) ->
+    case conjunction_type_inference_equals(Operand1) of
         undefined ->
-            TypeMap;
+            Acc;
         Type ->
             TypeMap#{Var => Type}
     end;
-type_inference({call, {atom, is_pid}, [{var, Var}]}, TypeMap) ->
+conjunction_type_inference({call, {atom, is_pid}, [{var, Var}]}, TypeMap) ->
     TypeMap#{Var => pid};
-type_inference({call, {atom, is_binary}, [{var, Var}]}, TypeMap) ->
+conjunction_type_inference({call, {atom, is_binary}, [{var, Var}]}, TypeMap) ->
     TypeMap#{Var => binary};
-type_inference({match, {var, Var1}, {var, Var2}}, TypeMap) ->
+conjunction_type_inference({match, {var, Var1}, {var, Var2}}, Acc = TypeMap) ->
     case TypeMap of
         #{Var2 := Type} ->
             TypeMap#{Var1 => Type};
         _ ->
-            TypeMap
+            Acc
     end;
-type_inference(_Other, TypeMap) ->
-    %ct:pal("~p:~p: Other~n\t~p~n", [?MODULE, ?FUNCTION_NAME, Other]),
-    TypeMap.
+conjunction_type_inference(_Other, Acc) ->
+    Acc.
 
-type_inference_equals({call, {atom, self}, []}) ->
+conjunction_type_inference_equals({call, {atom, self}, []}) ->
     pid;
-type_inference_equals({atom, _}) ->
+conjunction_type_inference_equals({atom, _}) ->
     atom;
-type_inference_equals({integer, _}) ->
+conjunction_type_inference_equals({integer, _}) ->
     integer;
-type_inference_equals({float, _}) ->
+conjunction_type_inference_equals({float, _}) ->
     float;
-type_inference_equals({string, _}) ->
+conjunction_type_inference_equals({string, _}) ->
     string;
-type_inference_equals({char, _}) ->
+conjunction_type_inference_equals({char, _}) ->
     char;
-type_inference_equals({nil}) ->
+conjunction_type_inference_equals({nil}) ->
     list;
-type_inference_equals({cons, _}) ->
+conjunction_type_inference_equals({cons, _}) ->
     list;
-type_inference_equals({bin, _}) ->
+conjunction_type_inference_equals({bin, _}) ->
     binary;
-type_inference_equals(_) ->
+conjunction_type_inference_equals(_) ->
     undefined.
 
 %% TODO go look at actual rules modules to see what kind of type inference cases I need
@@ -240,7 +324,7 @@ reaction_events(Match = {match, {var, Var1}, {var, Var2}},
                 Variables#{Var1 => Var2}
         end,
 
-    TypeMap2 = type_inference(Match, TypeMap),
+    TypeMap2 = conjunction_type_inference(Match, TypeMap),
     State#state{variables = Variables2,
                 type_map = TypeMap2};
 % TODO consider other cases where a bare '+' might occur,

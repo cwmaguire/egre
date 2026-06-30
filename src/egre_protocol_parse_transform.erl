@@ -8,11 +8,41 @@
 %% rules_attribute_look is not working
 %% is_owner/2 and describe/4 are not being inlined
 
+-define(a, c).
+
 parse_transform(Forms, _Options) ->
+    % io:format("egre_protocol_parse_transform - _Options: ~p~n", [_Options]),
+    % io:format("a: ~p~n", [?a]),
+    PropertyTypeModule = property_type_module(Forms),
+    io:format("Property type module: ~p~n", [PropertyTypeModule]),
+    PropertyTypes =
+        case PropertyTypeModule of
+            undefined ->
+                [];
+            _ ->
+             PropertyTypeModule:property_types()
+        end,
+    io:format("Property types: ~p~n", [PropertyTypes]),
     %egre_dbg:add(egre_protocol_parse_transform, inline_form),
     InlinedApiFunctions = inline_flatten(Forms),
-    egre_protocol_event_pairs:extract(InlinedApiFunctions),
+    egre_protocol_event_pairs:extract(InlinedApiFunctions, PropertyTypes),
+    %io:format("Forms:~n~p~n", [Forms]),
     Forms.
+
+
+ % {attribute,
+ %  {6,2},
+ %  compile,
+ %  [{d,property_type_module,mud_util},
+ %   {compile_info,[{property_type_module,mud_util}]},
+ %   {bad,option}]},
+
+property_type_module([]) ->
+    undefined;
+property_type_module([{attribute, _, compile, [{property_type_module, Mod} | _]} | _]) ->
+    Mod;
+property_type_module([_ | Rest]) ->
+    property_type_module(Rest).
 
 inline_flatten([FilenameAttribute | Forms]) ->
     FileRoot = filename(FilenameAttribute),
