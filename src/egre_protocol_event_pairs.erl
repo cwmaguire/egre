@@ -64,8 +64,10 @@ get_event_pairs(ApiFun = {{Module, Function, ?API_FUNCTION_ARITY}, {clause, Argu
     io:format(user, "Conjunction: ~p~n", [Conjunction]),
     io:format(user, "Body: ~n~p~n~n", [Body]),
 
-    % TypeMap1 = arguments_type_inference(Arguments, PropertyTypes),
-    TypeMap1 = #{},
+    io:format(user, "Getting custom data types with PropertyTypes: ~p~n", [PropertyTypes]),
+    TypeMap1 = arguments_type_inference(Function, Arguments, PropertyTypes),
+    io:format(user, "~nTypeMap after custom data type inference:~n~p~n", [TypeMap1]),
+    % TypeMap1 = #{},
     TypeMap2 = lists:foldl(fun conjunction_type_inference/2, TypeMap1, Conjunction),
 
     io:format(user, "~nTypeMap after conjunction type inference:~n~p~n", [TypeMap2]),
@@ -227,6 +229,31 @@ maybe_var_event(Event) ->
         _ ->
             {var, Event}
     end.
+
+% CustomData can be:
+% #{}
+% #{foo := bar}
+% #{foo := {body_part, Pid, BodyPart, Ref}
+
+arguments_type_inference(attempt, _Args = [{tuple, [_CustomData = {map, []}, _, _, _]}], PropertyTypes) ->
+    _NoCustomDataTypesInferred = #{};
+arguments_type_inference(attempt, _Args = [{tuple, [_CustomData = {map, Binds}, _, _, _]}], PropertyTypes) ->
+    {TypeMap, _} = lists:foldl(fun custom_data_bind_inference/2, {#{}, PropertyTypes}, Binds),
+    TypeMap;
+arguments_type_inference(_, _, _) ->
+    _NoCustomDataTypesInferred = #{}.
+
+custom_data_bind_inference({map_field_exact, {atom, Field}, {var, Var}},
+                           Acc = {TypeMap, PropertyTypes}) ->
+    case PropertyTypes of
+        #{Field := Type} ->
+            {TypeMap#{Var => Type}, PropertyTypes};
+        _ ->
+            Acc
+    end;
+custom_data_bind_inference(_UnrecognizedMapBind, Acc) ->
+    Acc.
+
 
 %[{op,'==',{var,'Self'},{call,{atom,self},[]}}],#{}
 
