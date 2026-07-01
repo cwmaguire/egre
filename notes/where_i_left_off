@@ -2,6 +2,325 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2026-06-30   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+Problem: I'm tracking variable name -> type in the attempt event variable type map instead of index
+-> type
+
+  When I merged the index types with the var name types, it doesn't make any sense:
+    e.g. [{1, int}, {'Self', pid}]
+
+  If I'm going to infer succeed event types, then I need to do it by position, and only if there's
+  only one possible event I'm subscribed to that matches the event shape:
+
+  Attempts that are subscribed
+  {1, do, 2} [{1, pid}]
+  {1, do, 2} [{1, binary}]
+
+  succeed event:
+  {1, do, 2}    ... was this where 1 was a pid, or where was a binary? Can't tell
+
+Question:
+
+  It seems like a subscribed attempt should kick off a succeed, and then if that succeed triggers
+  another event, then the pair is {AttemptEvent, TriggeredEvent}
+
+  Events can only be linked within a rules module: you have to listen for an attempt, subscribe to
+  it, then generate another event in a succeed function.
+
+    (I think there can be rare cases where an attempt triggers an event, maybe.)
+
+  So whenever I have an attempt, I should be looking for a matching succeed, and then checking that
+  succeed for another event being kicked off.
+
+  I can't trigger a new event unless I'm responding to an existing event: responding to an existing
+  event means I saw it attempted, subscribed to it, and now I'm handling my response to the success
+  of the event. So really, I'm looking for succeed->attempt, not attempt->succeed.
+
+    However, I'm only looking for reaction events in the body of the current scope path. That should
+    be fine for succeed-generated events.
+
+  So, is parsing the attempts only to figure out the types used in the succed handlers?
+
+  Okay, so ..._chains.erl is for linking succeed->attempts to other succeed->attempts. We just need
+  to find the places in succeed code that trigger new events in the MUD, then ...chains.erl will
+  piece those all together. It's assumed that getting to a succeed handler means we got to an
+  attempt handler and it subscribed.
+
+The first argument passed to a handler, `CustomData` is the result of calling a function provided by
+the MUD implementation. For egre_mud_1 we set the egre->extract_fun application env var to
+{mud_util, extract_from_props, 1}. Egre calls this function with Props and gets back custom data and
+log properties.
+
+For egre_mud_1 char_inject_self, {Source, Action, Targetname} should have had type inference of
+  [{2, atom}, {3, binary}]
+
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  ░
+  ░ Arguments: [{tuple,[{map,[]},
+  ░                     {var,'Props'},
+  ░                     {tuple,[{var,'Source'},{var,'Action'},{var,'TargetName'}]},
+  ░                     {var,'_'}]}]
+  ░ Conjunction: [[{op,'andalso',
+  ░                    {call,{atom,is_binary},[{var,'TargetName'}]},
+  ░                    {op,'orelse',
+  ░                        {op,'==',{var,'Action'},{atom,look}},
+  ░                        {op,'==',{var,'Action'},{atom,search}}}}]]
+  ░
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+┏━━━━━━━━━━━━━━━━┓
+┃   2026-06-29   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+I'm struggling to understand the event pairs code.
+
+index_variables turns the event parameter into a 3-tuple:
+  1: the original event with variables replaced with index placeholders:
+
+     {1, gives, 2, to, 3}
+
+  2: a list of indexed variable names: we don't care about what variable names are used in a
+     module when we're trying to match events, but we want to remember what the names were so we can
+     understand them later.
+
+     [{1, <<"Room">>}, {2, <<"Coin">>}, {3, <<"self()">>}]
+
+  3: a list of indexed types:
+
+     [{1, pid}, {2, '_'}, {3, pid}]
+
+     Sometimes we match the variable but we don't know the type.
+
+These seem a bit suspicious as an indexex variable:
+
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  ░
+  ░ {5,<<"_Active = [, _ | _]">>}
+  ░ {5,<<"_Active = []">>}
+  ░
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+Okay, here's what I think we're doing in get_event_pairs:
+  - figure out what types we know from guard expressions in the conjunction
+    - a rules module that can handle multiple different types of variables is actually handling
+      multiple different "typed events"
+
+  - get the "event", which is third argument in attempt calls or the second argument in succeed
+    calls
+
+    - figure out if we're just ignoring the whole event 
+
+  - tree search over all the expressions in the body (recursively) and find and reactions: i.e. when
+    we're handling an event and cause another event.
+
+    - keep track of any variable types we can deduce, e.g. from mathematical addition
+
+  - ?? Why are we merging the "indexed types" if the indexed event already exists in the attempt
+    type map? ... because when we generate the reaction, we may have inferred what the attempt event
+    variable types were, so we're updating them.
+
+    - AttemptTypes is a mapping of ... I'm guessing attemp events to their variable types
+
+      - variable types is a map: AttemptTypeMap
+
+    - ?? What is AttemptTypes for ??
+
+  - ?? What does maybe_add_attempt_types do ??
+
+Whoops, I just wove PropertyTypes through a bunch of logic and it turns out I only need to use those
+once to figure out what the types are in the properties map. The property types I get back are atom
+=> type, e.g. owner => pid. It's not *variable* types, like <<"Owner">> => pid.
+
+AttemptTypes can only be populated for events after the first. Therefore, it's something about
+passing along types that the first "scope path" passes along.
+
+  It's "attempt" types, so I'm assuming this is something to do with matching up with succeed
+  events, so we can tell what types the succeed event must have.
+
+My code for maybe_add_attempt_types/3 was broken: I was trying to match on #{} as an empty map.
+
+┏━━━━━━━━━━━━━━━━┓
+┃   2026-06-28   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+Whoops, I wasn't calling the type_inference_self test, but eqWAlizer caught it.
+
+binary type inference test works.
+
+The `pairs` file isn't being regenerated.
+
+The file is being copied from egre:
+
+  ░ -rw-r--r-- 1 c c 18941 Jun 28 06:54 egre_protocol_event_pairs.erl
+
+  (It's 6:57 am now)
+
+  The `c` file is doing `make FULL=1 all deps | tee compile_out
+
+I'm pretty sure it's compiling egre_protocol_event_chains.erl:
+
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  ░
+  ░ $cat compile_out
+  ░ make[1]: Entering directory '/home/c/dev/egre_mud_1/deps/egre'
+  ░ make[2]: Entering directory '/home/c/dev/egre_mud_1/deps/jsx'
+  ░ make[2]: Leaving directory '/home/c/dev/egre_mud_1/deps/jsx'
+  ░  DEPEND egre.d
+  ░  ERLC   egre.erl egre_app.erl egre_dbg.erl egre_event_log.erl egre_event_log_json.erl
+  ░         egre_event_log_postgres.erl egre_hierarchy.erl egre_index.erl egre_log_transform.erl
+  ░         egre_object.erl egre_object_sup.erl egre_postgres.erl egre_protocol_event_chains.erl
+  ░         egre_protocol_event_pairs.erl egre_protocol_parse_transform.erl
+  ░         egre_protocol_parse_transform_old.erl egre_rules.erl egre_serialize.erl egre_sup.erl
+  ░  APP    egre.app.src
+  ░ make[1]: Leaving directory '/home/c/dev/egre_mud_1/deps/egre'
+  ░
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+There's no other `pairs` files.
+
+  The `events/*.bert` files are new, which are written by ...pairs.erl
+
+  Oh, `egre_protocol_chains` isn't being updated either
+
+D'oh! I'm retarded. You can to call egre_protocol_event_chains:chains/0 *MANUALLY* in Erlang.
+
+===
+
+I don't know if this was always the case, but conjunctions are lists.
+That doesn't even make sense. What else could they be?
+I'm not sure what happened where I thought a conjunction _wouldn't_ be a list. It's a list of AND'ed
+predicates.
+
+  I need to fold over the disjunction, which is a list of conjunctions, and then I need to fold over
+  the conjunction, which is a list of expressions.
+
+===
+
+Where does "Owner" get set? It doesn't seem to be in egre_object.erl
+
+  mud_util:extract_from_props(Props) - finds the Owner
+
+  I think it's just a generic property set by the starting world and the rules.
+  If it used to have meaning in egre_object, it doesn't now. That makes sense because it seems very
+  mud-specific.
+
+===
+
+Could each MUD provide a list of variable names and their types?
+
+  e.g. type_of(<<"Owner">>) -> pid;
+       type_of(<<"Source">>) -> pid.
+
+  The parse transform is called because of a directive in the MUD rules modules.
+
+  The parse transform module doesn't get anything from the MUD code; it only has
+  access to ... itself? I'm guessing it can access anything that's accessible to the compiler, so
+  all the original (i.e. MUD) code.
+
+  I'm not sure if I'd want to tie variable names to types. That could have some unexpected
+  consequences.
+
+===
+
+Could I use property names as types? e.g.
+
+  In this code, set type of OwnerRoom to owner.
+
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  ░
+  ░ attempt({#{owner := OwnerRoom},
+  ░          Props,
+  ░          _DescFromParent = {Source, describe, OwnerRoom, with, RoomContext}, _}) ->
+  ░
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+  Then the types would be {'_', owner, '_'}
+
+  I think that might require that wherever that event matched, it would have to match on the owner
+  of the object it matched on. You couldn't match it to anything that wasn't listed as an owner in
+  the properties of an object.
+
+  For instance, if you said "describe the room next to me", the room next to you wouldn't be an
+  owner property.
+
+  Even better: a room with nothing in it cannot be the owner of anything, and then couldn't be
+  matched by any event that got the room reference with the owner property.
+
+  I think I can have a mud-specific function that says what different property types must be. An
+  owner must be a PID.
+
+===
+
+egre_protocol_chains is down to 12M from 27M.
+
+===
+
+I could do type inference based on calls to egre:attempt/2,3,4 since the first argument must be a
+PID.
+
+┏━━━━━━━━━━━━━━━━┓
+┃   2026-06-27   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+I think I'm just going to walk through some chains. I'll do it in egre_mud_1 though, because the
+rules I'm using are from there.
+
+Looks like I'm getting a ton of duplicate events.
+
+  Did a lists:usort/1 on the pairs, so not as many duplicate pairs.
+
+I'm not capturing guards that mark a param as binary
+
+e.g.
+
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  ░
+  ░ attempt({#{}, Props, {Source, look, TargetName}, _})
+  ░   when Source =/= self(),
+  ░        is_binary(TargetName) ->                 <-- IS BINARY
+  ░     Log = [{?EVENT, look},
+  ░            {?SOURCE, Source}],
+  ░     SelfName = proplists:get_value(name, Props, <<>>),
+  ░
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+
+Apparently, the type inference isn't finished.
+
+"Conjunction" means it's a guard expression consisting only of guard expressions separated by
+commas.
+
+  egre_protocol_event_pairs.erl - type inference
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  ░
+  ░ TypeMap = lists:foldl(fun type_inference/2, #{}, Conjunction),
+  ░
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+  e.g. a == 1; a == c, b == <<"d">>
+
+  This whole thing is a disjunction, because it's an OR over every expression separated by
+  semi-colons.
+
+  a == 1 is a conjunction
+  a == c, b == <<"d">> is a conjunction: multiple guard expressions separated by commas (AND)
+
+  (a == 1) OR (a == c AND b == <<"d">>)
+
+  We break these out into two separate paths because the function will have different types
+  depending on which conjunction was used:
+    a is integer
+      OR
+    a is atom
+    b is binary
+
+    Any event that is kicked off when a is an integer can only be reacted to by an event
+    handler compatible with integer.
+
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2026-06-23   ┃
 ┗━━━━━━━━━━━━━━━━┛
 
@@ -46,7 +365,7 @@ egre_protocol_parse_transform calls egre_protocol_event_pairs:extract(InlinedApi
 egre_protocol_event_chains.erl writes out to egre_protocol_chains, except egre_protocol_chains
 hasn't been modified since March
 
-  Hmm, am I supposed to run _event_chains.erl manually?
+  Hmm, am I supposed to run _event_chains.erl, manually?
 
   Hmm, yeah, it looks like it.
 
