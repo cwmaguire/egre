@@ -72,6 +72,7 @@ inline_flatten([FilenameAttribute | Forms]) ->
     ScopePaths.
 
 flatten_clauses({K, Clauses}, ModuleDisjunctions) ->
+    ct:pal("Clauses: ~p~n", [Clauses]),
     ModuleDisjunctionsNew = [{K, SplitConjunction} || Clause <- Clauses,
                                                  Disjunction <- Clause,
                                                  SplitConjunction <- Disjunction],
@@ -92,6 +93,7 @@ is_api_fun(_) ->
 fun2kv(Module, {function, Name, Arity, Clauses}) ->
     {{Module, Name, Arity}, Clauses}.
 
+%% Must return [[[<clause, ...]]]
 
 inline_api_fun({Module, _, _}, Clauses, Funs) ->
     [inline_api_clause(Module, C, Funs) || C <- Clauses].
@@ -99,34 +101,46 @@ inline_api_fun({Module, _, _}, Clauses, Funs) ->
 inline_api_clause(Module, {clause, Args, [], Forms}, Funs) ->
     [inline_api_conjunction(Module, {clause, Args, [], Forms}, Funs)];
 inline_api_clause(Module, {clause, Args, Disjunction, Forms}, Funs) ->
+    io:format(user, "Disjunction: ~p~n", [Disjunction]),
     [inline_api_conjunction(Module,
                             {clause, Args, Conjunction, Forms},
                             Funs) || Conjunction <- Disjunction].
 
 inline_api_conjunction(Module, {clause, Args, [], Forms}, Funs) ->
-    inline_api_conjunction_branches(Module, {clause, Args, [], Forms}, Funs);
+    [inline_api_conjunction_branches(Module, {clause, Args, [], Forms}, Funs)];
 inline_api_conjunction(Module, {clause, Args, GuardExpressions, Forms}, Funs) ->
-    GuardBranches = lists:foldl(fun flatten_guard_branches/2, [], GuardExpressions),
+    GuardBranches = flatten_guard_branches(GuardExpressions, [[]]),
     [inline_api_conjunction_branches(Module,
-                                     {clause, Args, Branch, Forms},
+                                     {clause, Args, [Branch], Forms},
                                      Funs) || Branch <- GuardBranches].
 
-flatten_guard_branches({op, 'andalso', Expression1, Expression2}, Branches) ->
-    Branches1 = flatten_guard_branches(Expression1, []),
-    Branches2 = flatten_guard_branches(Expression2, []),
-    NewBranches = [{op, 'andalso', B1, B2} || B1 <- Branches1, B2 <- Branches2],
-    [Branches ++ B || B <- NewBranches];
-flatten_guard_branches({op, 'orelse', Expression1, Expression2}, Branches) ->
-    Branches1 = flatten_guard_branches(Expression1, []),
-    Branches2 = flatten_guard_branches(Expression2, []),
-    io:format(user, "Orelse Branch1: ~p~nOrelse Branch2: ~p~n", [Branches1, Branches2]),
+flatten_guard_branches([], Conjunctions) ->
+    Conjunctions;
+flatten_guard_branches([{op, 'andalso', Expression1, Expression2} | Rest], Conjunctions) ->
+    Branches1 = flatten_guard_branches([Expression1], [[]]),
+    Branches2 = flatten_guard_branches([Expression2], [[]]),
+    NewBranches = [{op, 'andalso', B1, B2} || [B1] <- Branches1, [B2] <- Branches2],
+    NewConjunctions = [C ++ B || C <- Conjunctions, B <- NewBranches],
+    flatten_guard_branches(Rest, NewConjunctions);
+flatten_guard_branches([{op, 'orelse', Expression1, Expression2} | Rest], Conjunctions) ->
+    io:format(user, "orelse exp1: ~p~n", [Expression1]),
+    io:format(user, "orelse exp2: ~p~n", [Expression2]),
+    Branches1 = flatten_guard_branches([Expression1], [[]]),
+    Branches2 = flatten_guard_branches([Expression2], [[]]),
+    io:format(user, "Orelse Branch1: ~p~n"
+                    "Orelse Branch2: ~p~n",
+                    [Branches1, Branches2]),
     % NewBranches = [{op, 'orelse', B1, B2} || B1 <- Branches1, B2 <- Branches2],
     % io:format(user, "New orelse branches: ~p~n", [NewBranches]),
-    New = [Branches ++ B || B <- [Branches1, Branches2]],
-    io:format(user, "New branches with orelse tails: ~p~n", [New]),
-    New;
-flatten_guard_branches(Expression, Branches) ->
-    Branches ++ [Expression].
+    LeftConjunctions = [C ++ B || C <- Conjunctions, B <- Branches1],
+    RightConjunctions = [C ++ B || C <- Conjunctions, B <- Branches2],
+    NewConjunctions = LeftConjunctions ++ RightConjunctions,
+    io:format(user, "New conjunctions with orelse tails: ~p~n", [NewConjunctions]),
+    flatten_guard_branches(Rest, NewConjunctions);
+% flatten_guard_branches([Expression | Rest], []) ->
+%     flatten_guard_branches(Rest, [Expression]);
+flatten_guard_branches([Expression | Rest], Conjunctions) ->
+    flatten_guard_branches(Rest, [C ++ [Expression] || C <- Conjunctions]).
 
 inline_api_conjunction_branches(Module, {clause, Args, ConjunctionBranch, Forms}, Funs) ->
     % TODO this seems like a no-op

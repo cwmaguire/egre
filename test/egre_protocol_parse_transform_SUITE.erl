@@ -20,6 +20,7 @@
 -export([level_2_call_recursive/1]).
 -export([level_1_decouple_disjunctions/1]).
 -export([decouple_orelse/1]).
+-export([decouple_andalso_orelse/1]).
 -export([case_no_guards_1_clause/1]).
 -export([case_no_guards_2_clauses/1]).
 -export([case_1_guard_2_clauses/1]).
@@ -38,6 +39,7 @@
 %      level_2_call_with_lc,
 %      level_2_call_recursive,
 %      level_1_decouple_disjunctions,
+%      decouple_orelse,
 %      case_no_guards_1_clause,
 %      case_no_guards_2_clauses,
 %      case_1_guard_2_clauses,
@@ -46,14 +48,13 @@
 %      case_nested,
 %      case_expression_is_nested_case].
 
-% all() ->
-%     [level_1_decouple_disjunctions,
-%      decouple_orelse].
+% all() -> [level_1_decouple_disjunctions, decouple_orelse].
 
-% all() ->
-%     [decouple_orelse].
+all() -> [decouple_andalso_orelse].
+% all() -> [decouple_orelse].
+% all() -> [level_1_call_no_args].
 
-all() -> [level_1_decouple_disjunctions].
+% all() -> [level_1_decouple_disjunctions].
 
 init_per_suite(Config) ->
 
@@ -84,74 +85,27 @@ init_per_testcase(_TestCase, Config) ->
 end_per_testcase(_TestCase, _Config) ->
     ok.
 
-level_1_call_no_args(Config) ->
-    Test = level_1_call_no_args,
-    compare(Test, compile(Test, Config)).
+level_1_call_no_args(Config) -> test(?FUNCTION_NAME, Config).
+level_1_call_1_literal_arg(Config) -> test(?FUNCTION_NAME, Config).
+level_1_call_1_var_arg(Config) -> test(?FUNCTION_NAME, Config).
+level_1_decouple_disjunctions(Config) -> test(?FUNCTION_NAME, Config).
+decouple_orelse(Config) -> test(?FUNCTION_NAME, Config).
+decouple_andalso_orelse(Config) -> test(?FUNCTION_NAME, Config).
+level_2_call_no_args(Config) -> test(?FUNCTION_NAME, Config).
+level_2_call_2_var_args(Config) -> test(?FUNCTION_NAME, Config).
+level_2_call_1_fun_arg(Config) -> test(?FUNCTION_NAME, Config).
+level_2_call_with_lc(Config) -> test(?FUNCTION_NAME, Config).
+level_2_call_recursive(Config) -> test(?FUNCTION_NAME, Config).
+case_no_guards_1_clause(Config) -> test(?FUNCTION_NAME, Config).
+case_no_guards_2_clauses(Config) -> test(?FUNCTION_NAME, Config).
+case_1_guard_2_clauses(Config) -> test(?FUNCTION_NAME, Config).
+case_2_guards_2_clauses(Config) -> test(?FUNCTION_NAME, Config).
+case_2_clauses_with_2_guards_each(Config) -> test(?FUNCTION_NAME, Config).
+case_nested(Config) -> test(?FUNCTION_NAME, Config).
+case_expression_is_nested_case(Config) -> test(?FUNCTION_NAME, Config).
 
-level_1_call_1_literal_arg(Config) ->
-    %egre_dbg:add(egre_protocol_ast_translate, rename_form_args),
-    Test = level_1_call_1_literal_arg,
-    compare(Test, compile(Test, Config)).
-
-level_1_call_1_var_arg(Config) ->
-    Test = level_1_call_1_var_arg,
-    compare(Test, compile(Test, Config)).
-
-level_1_decouple_disjunctions(Config) ->
-    Test = level_1_decouple_disjunctions,
-    compare(Test, compile(Test, Config)).
-
-decouple_orelse(Config) ->
-    Test = decouple_orelse,
-    compare(Test, compile(Test, Config)).
-
-level_2_call_no_args(Config) ->
-    Test = level_2_call_no_args,
-    compare(Test, compile(Test, Config)).
-
-level_2_call_2_var_args(Config) ->
-    Test = level_2_call_2_var_args,
-    compare(Test, compile(Test, Config)).
-
-level_2_call_1_fun_arg(Config) ->
-    Test = level_2_call_1_fun_arg,
-    compare(Test, compile(Test, Config)).
-
-level_2_call_with_lc(Config) ->
-    Test = level_2_call_with_lc,
-    compare(Test, compile(Test, Config)).
-
-level_2_call_recursive(Config) ->
-    Test = level_2_call_recursive,
-    compare(Test, compile(Test, Config)).
-
-case_no_guards_1_clause(Config) ->
-    Test = case_no_guards_1_clause,
-    compare(Test, compile(Test, Config)).
-
-case_no_guards_2_clauses(Config) ->
-    Test = case_no_guards_2_clauses,
-    compare(Test, compile(Test, Config)).
-
-case_1_guard_2_clauses(Config) ->
-    Test = case_1_guard_2_clauses,
-    compare(Test, compile(Test, Config)).
-
-case_2_guards_2_clauses(Config) ->
-    Test = case_2_guards_2_clauses,
-    compare(Test, compile(Test, Config)).
-
-case_2_clauses_with_2_guards_each(Config) ->
-    Test = case_2_clauses_with_2_guards_each,
-    compare(Test, compile(Test, Config)).
-
-case_nested(Config) ->
-    Test = case_nested,
-    compare(Test, compile(Test, Config)).
-
-case_expression_is_nested_case(Config) ->
-    Test = case_expression_is_nested_case,
-    compare(Test, compile(Test, Config)).
+test(FileName = FunctionName, Config) ->
+    compare(FunctionName, compile(FileName, Config)).
 
 compare(_Test, {Same, Same}) ->
     ok;
