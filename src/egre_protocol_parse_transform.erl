@@ -8,13 +8,11 @@
 %% rules_attribute_look is not working
 %% is_owner/2 and describe/4 are not being inlined
 
--define(a, c).
-
 parse_transform(Forms, _Options) ->
     % io:format("egre_protocol_parse_transform - _Options: ~p~n", [_Options]),
     % io:format("a: ~p~n", [?a]),
     PropertyTypeModule = property_type_module(Forms),
-    io:format("Property type module: ~p~n", [PropertyTypeModule]),
+    io:format(user, "Property type module: ~p~n", [PropertyTypeModule]),
     PropertyTypes =
         case PropertyTypeModule of
             undefined ->
@@ -22,7 +20,7 @@ parse_transform(Forms, _Options) ->
             _ ->
              PropertyTypeModule:property_types()
         end,
-    io:format("Property types: ~p~n", [PropertyTypes]),
+    io:format(user, "Property types: ~p~n", [PropertyTypes]),
     %egre_dbg:add(egre_protocol_parse_transform, inline_form),
     InlinedApiFunctions = inline_flatten(Forms),
     egre_protocol_event_pairs:extract(InlinedApiFunctions, PropertyTypes),
@@ -59,8 +57,10 @@ inline_flatten([FilenameAttribute | Forms]) ->
                                inline_api_fun(K, V, Funs)
                            end,
                            ApiFuns),
+    io:format(user, "InlinedFuns: ~p~n", [InlinedFuns]),
 
     [_ | _] = FunClauses = lists:foldl(fun flatten_clauses/2, [], maps:to_list(InlinedFuns)),
+    io:format(user, "FunClauses: ~p~n", [FunClauses]),
     [_ | _] = ScopePaths = lists:foldl(fun scope_paths/2, [], FunClauses),
     SortedScopePaths = lists:sort(ScopePaths),
 
@@ -72,7 +72,9 @@ inline_flatten([FilenameAttribute | Forms]) ->
     ScopePaths.
 
 flatten_clauses({K, Clauses}, ModuleDisjunctions) ->
-    ModuleDisjunctionsNew = [{K, Disjunction} || Clause <- Clauses, Disjunction <- Clause],
+    ModuleDisjunctionsNew = [{K, SplitConjunction} || Clause <- Clauses,
+                                                 Disjunction <- Clause,
+                                                 SplitConjunction <- Disjunction],
     ModuleDisjunctions ++ ModuleDisjunctionsNew.
 
 is_fun({function, _Line, _Name, _Arity, _Clauses}) ->
@@ -95,20 +97,47 @@ inline_api_fun({Module, _, _}, Clauses, Funs) ->
     [inline_api_clause(Module, C, Funs) || C <- Clauses].
 
 inline_api_clause(Module, {clause, Args, [], Forms}, Funs) ->
-    [inline_api_disjunction(Module, {clause, Args, [], Forms}, Funs)];
-inline_api_clause(Module, {clause, Args, Guards, Forms}, Funs) ->
-    [inline_api_disjunction(Module,
+    [inline_api_conjunction(Module, {clause, Args, [], Forms}, Funs)];
+inline_api_clause(Module, {clause, Args, Disjunction, Forms}, Funs) ->
+    [inline_api_conjunction(Module,
                             {clause, Args, Conjunction, Forms},
-                            Funs) || Conjunction <- Guards].
+                            Funs) || Conjunction <- Disjunction].
 
-inline_api_disjunction(Module, {clause, Args, MaybeConjunction, Forms}, Funs) ->
+inline_api_conjunction(Module, {clause, Args, [], Forms}, Funs) ->
+    inline_api_conjunction_branches(Module, {clause, Args, [], Forms}, Funs);
+inline_api_conjunction(Module, {clause, Args, GuardExpressions, Forms}, Funs) ->
+    GuardBranches = lists:foldl(fun flatten_guard_branches/2, [], GuardExpressions),
+    [inline_api_conjunction_branches(Module,
+                                     {clause, Args, Branch, Forms},
+                                     Funs) || Branch <- GuardBranches].
+
+flatten_guard_branches({op, 'andalso', Expression1, Expression2}, Branches) ->
+    Branches1 = flatten_guard_branches(Expression1, []),
+    Branches2 = flatten_guard_branches(Expression2, []),
+    NewBranches = [{op, 'andalso', B1, B2} || B1 <- Branches1, B2 <- Branches2],
+    [Branches ++ B || B <- NewBranches];
+flatten_guard_branches({op, 'orelse', Expression1, Expression2}, Branches) ->
+    Branches1 = flatten_guard_branches(Expression1, []),
+    Branches2 = flatten_guard_branches(Expression2, []),
+    io:format(user, "Orelse Branch1: ~p~nOrelse Branch2: ~p~n", [Branches1, Branches2]),
+    % NewBranches = [{op, 'orelse', B1, B2} || B1 <- Branches1, B2 <- Branches2],
+    % io:format(user, "New orelse branches: ~p~n", [NewBranches]),
+    New = [Branches ++ B || B <- [Branches1, Branches2]],
+    io:format(user, "New branches with orelse tails: ~p~n", [New]),
+    New;
+flatten_guard_branches(Expression, Branches) ->
+    Branches ++ [Expression].
+
+inline_api_conjunction_branches(Module, {clause, Args, ConjunctionBranch, Forms}, Funs) ->
+    % TODO this seems like a no-op
     Disjunction =
-        case MaybeConjunction of
+        case ConjunctionBranch of
             [] ->
                 [];
             _ ->
-                MaybeConjunction
+                ConjunctionBranch
         end,
+    io:format(user, "Disjunction: ~p~n", [Disjunction]),
     {Module, Forms2, _Funs, _} =
         lists:foldl(fun inline_form/2,
                     {Module, _Forms = [], Funs, []},

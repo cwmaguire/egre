@@ -235,7 +235,7 @@ maybe_var_event(Event) ->
 % #{foo := bar}
 % #{foo := {body_part, Pid, BodyPart, Ref}
 
-arguments_type_inference(attempt, _Args = [{tuple, [_CustomData = {map, []}, _, _, _]}], PropertyTypes) ->
+arguments_type_inference(attempt, _Args = [{tuple, [_CustomData = {map, []}, _, _, _]}], _PropertyTypes) ->
     _NoCustomDataTypesInferred = #{};
 arguments_type_inference(attempt, _Args = [{tuple, [_CustomData = {map, Binds}, _, _, _]}], PropertyTypes) ->
     {TypeMap, _} = lists:foldl(fun custom_data_bind_inference/2, {#{}, PropertyTypes}, Binds),

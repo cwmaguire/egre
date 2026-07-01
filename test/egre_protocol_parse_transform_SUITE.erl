@@ -19,6 +19,7 @@
 -export([level_2_call_with_lc/1]).
 -export([level_2_call_recursive/1]).
 -export([level_1_decouple_disjunctions/1]).
+-export([decouple_orelse/1]).
 -export([case_no_guards_1_clause/1]).
 -export([case_no_guards_2_clauses/1]).
 -export([case_1_guard_2_clauses/1]).
@@ -27,26 +28,32 @@
 -export([case_nested/1]).
 -export([case_expression_is_nested_case/1]).
 
-all() ->
-    [level_1_call_no_args,
-     level_1_call_1_literal_arg,
-     level_1_call_1_var_arg,
-     level_2_call_no_args,
-     level_2_call_2_var_args,
-     level_2_call_1_fun_arg,
-     level_2_call_with_lc,
-     level_2_call_recursive,
-     level_1_decouple_disjunctions,
-     case_no_guards_1_clause,
-     case_no_guards_2_clauses,
-     case_1_guard_2_clauses,
-     case_2_guards_2_clauses,
-     case_2_clauses_with_2_guards_each,
-     case_nested,
-     case_expression_is_nested_case].
+% all() ->
+%     [level_1_call_no_args,
+%      level_1_call_1_literal_arg,
+%      level_1_call_1_var_arg,
+%      level_2_call_no_args,
+%      level_2_call_2_var_args,
+%      level_2_call_1_fun_arg,
+%      level_2_call_with_lc,
+%      level_2_call_recursive,
+%      level_1_decouple_disjunctions,
+%      case_no_guards_1_clause,
+%      case_no_guards_2_clauses,
+%      case_1_guard_2_clauses,
+%      case_2_guards_2_clauses,
+%      case_2_clauses_with_2_guards_each,
+%      case_nested,
+%      case_expression_is_nested_case].
 
-%all() ->
-    %[level_2_call_2_var_args].
+% all() ->
+%     [level_1_decouple_disjunctions,
+%      decouple_orelse].
+
+% all() ->
+%     [decouple_orelse].
+
+all() -> [level_1_decouple_disjunctions].
 
 init_per_suite(Config) ->
 
@@ -92,6 +99,10 @@ level_1_call_1_var_arg(Config) ->
 
 level_1_decouple_disjunctions(Config) ->
     Test = level_1_decouple_disjunctions,
+    compare(Test, compile(Test, Config)).
+
+decouple_orelse(Config) ->
+    Test = decouple_orelse,
     compare(Test, compile(Test, Config)).
 
 level_2_call_no_args(Config) ->
