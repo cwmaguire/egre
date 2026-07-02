@@ -21,7 +21,7 @@ property_types(Forms) ->
         undefined ->
             [];
         Mod ->
-         Mod:property_types()
+            Mod:property_types()
     end.
 
 

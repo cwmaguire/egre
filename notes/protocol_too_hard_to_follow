@@ -1,6 +1,179 @@
 Protocol is too hard to follow
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2026-07-02   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+Here's a recap on how this all works:
+
+Note:
+
+  The intended audience for this is my future self. I don't really believe anyone else is ever going
+  to use this because it's kind of an insane idea and goes against how games are typically built. It
+  is assumed that egre_mud_1 is going to be the only MUD to ever use this protocol extraction code.
+
+  If you're insane enough to try using this, then you can put in the effort to figure out how to
+  port this to your own MUD implementation.
+
+  If you _are_ insane enough, reach out to me. I'll probably gladly offer a limited amount of help.
+
+Problem:
+
+  Rules are spread out across files and use literal event structures to handle events and generate
+  new events, i.e. cause and effect pairs. It's fiendishly hard to read a chain of cause and effect
+  pairs as a cohesive logic unit: e.g. an attack sequence. The logic is spread out over different
+  handlers and different events. It's difficult to figure out when a chain breaks and it's very easy
+  to break a chain when there's no compiler checking to see what chains exist.
+
+Rough Solution:
+
+  We're creating a "protocol" or "spec" with our rules: rules handle events ("actions"), and spawn
+  new events ("reactions"). If we could survey the whole codebase we could chain together these
+  action+reaction pairs and see what the logical flow is in response to each event.
+
+  A -> B
+       B -> C
+
+Naive Solution 1:
+
+  Look at all the attempt and succeed functions ("API" functions) and capture the event they
+  handle.
+
+  Problem: Each handler can assign it's own variable names, so the events might not match.
+
+Naive Solution 2:
+
+  Remove the variable names and replace them with something else, like index numbers.
+
+  Problem: If a handler reacts to {_, do, <binary>} with {_, do, <pid>} then they both have the same
+  shape: {1, do, 2} -> {1, do, 2}. This creates an endless loop when we try and chain the events
+  together.
+
+Naive Solution 3:
+
+  Use type inference in the rule handler code to figure out what the variable types are and match up
+  on variable types. We can use guard expressions, function calls, and operators to infer types:
+  is_binary/1, is_atom/1, math operators, self/0, etc.
+
+  Problem:
+
+  Each rule handler can have multiple code paths that that handle different actions and generate
+  different reactions. If a rule generates {<bin>/<int>, do, <atom>}, it would be annoying to match
+  those up, and it can get more complicated: i.e. an action can have different shaped reactions with
+  different types.
+
+Naive Solution 4:
+
+  Break each API function into different variable scope paths: create multiple copies of the
+  function where only a single logical path is followed and track the types of the variables on that
+  path: when an event is generated, we know exactly what types it can have.
+
+  Problem:
+
+  API functions can call other functions.
+
+Final solution:
+
+  1. Inline all non-API functions called from an API function as case statements. Functions are just
+  case statements.
+  2. Break up all the guard clause disjunctions and create separate copies of the function for each
+  guard clause disjunction. Guard clauses are in functions and case statements.
+  3. Break up all guard clause `orelse` operators like disjunctions: if we can do <this> `orelse`
+  <that>, then those are two distinct code paths with potentially different variable types.
+
+  Bonus:
+  4. Have the MUD implementation specify any known `CustomData` field types. EGRE allows MUD
+  implementations to provide a function to turn an object/process property list into a map. The MUD
+  implementation can specify what keys in the map (e.g. `owner`) have what type (e.g. <pid>). Any
+  bindings on the first parameter to the event handlers, i.e. the `CustomData`, can be used to infer
+  the types.
+
+  Example: {#{owner := Owner}, _Props, {look, Owner}, _Context}
+
+    In this case, if we know that #{owner => pid}, then we can infer that Owner is a pid:
+
+      Event shape     Index of types     Index of variable names (documentation)
+      {look, 1},      {1, pid},          {1, <<"Owner">>}
+
+Three files:
+- egre_protocol_parse_transform.erl
+  - inline non-API functions as case statements
+    - search the code for local function calls; ignore remote calls (e.g. self/0)
+  - decouple API functions into scope paths using function and case statement guard disjunctions
+    - I don't use the `if` operator, so these are the only flow control within functions
+  - write out the resulting AST to files for debugging
+  - call egre_protocol_event_pairs:extract/2 to find action+reaction pairs for each module
+
+- egre_protocol_event_pairs
+  - find the API functions (attempt & succeed)
+  - run type inference on the `CustomData` map and the guard clauses
+  - match actions to reactions
+  - "index" the event - create a type-agnostic event shape with index place holders for expressions
+    and variables
+    - keep track of variable types for attempts
+  - merge succeed variable types with attempt variable types if there's only one attempt "scope
+    path" for a given shape.
+    - i.e. if there's only one possible scope path for {1, do, 2}, and we have a succeed handler for
+      that event shape, then it can only be responding to the one attempt event shape that we
+      remembered: there's no other way this object could have subscribed to that event.
+      - Reminder: only the first matching rules handler attached to an object can subscribe to that
+	event. Once a rules module subscribes to an event, no other rules module will see it; the
+	search for a matching rules module event handler short circuits. If a succed handler matches
+	an event, the event must have been subscribed to within the same rules handler module.
+  - write out action+reaction pairs to the `pairs` file.
+
+Testing:
+
+  1. Modify the `t` shell script to specify the CT_SUITES you want to run
+    (see the scripts for commented out examples)
+  2. Modify the _SUITE.erl files to specify what cases to run using the all/0 function
+    (see commented out Erlang code for examples)
+  3. Run ./t
+
+Running:
+
+  This is run from the MUD implementation, not EGRE, because the rules live in a MUD implementation.
+  (That's what a MUD implementation is: rules handlers). EGRE_MUD_1 is the reference implementation.
+
+  Also, we can ignore EGRE_MUD because that's just a server that loads up EGRE and a MUD
+  implementation.
+
+  1) Set the EGRE_PARSE_TRANSFORM_OUT_DIR for where to write the inlined rules that
+  egre_protocol_parse_transform will write.
+  2) Touch whatever files you want to process (e.g. `touch src/rules/*.erl`) in the MUD
+  implementation project
+  3) Run ./c
+
+  The egre_protocol_*.erl files are copied from the local EGRE repo to the local MUD implementation
+  repo. This is so we don't have to commit EGRE code so the MUD implementation can access it.
+
+How the Parse Transform Tests Work:
+
+  - write two Erlang files:
+    - the Erlang that we start with, called <test_name>_in.erl
+    - the Erlang that will generate the AST we expect, called <test_name>_out.erl
+  - compile <test_name>_in.erl with egre_protocol_parse_transform.erl as the parse transform
+  - compile <test_name>_out.erl with the Erlang identity transform example
+  - compare our parse transform output of _in.erl with the identity transform output of _out.erl
+
+  This allows us to write the initial Erlang and result Erlang and compare the AST.
+
+  If we took the AST from compiling _in.erl with egre_protocol_parse_transform and turned it back
+  into Erlang, we should end up with _out.erl.
+
+  If they don't match then we print out the AST of the _in.erl file, the parse transformed AST of
+  the _in.erl file, and the AST of the _out.erl file. We get the original AST, custom AST, and
+  expected AST.
+
+  _in.erl + identity = input AST
+  _in.erl + parse transform = output AST
+  _out.erl + identity = expected AST
+
+  output should equal expected
+
+  input is useful to see what the original code looked like, e.g. case guard expressions.
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2025-09-14   ┃
 ┗━━━━━━━━━━━━━━━━┛
 
