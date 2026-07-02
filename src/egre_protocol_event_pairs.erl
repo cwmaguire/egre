@@ -1,6 +1,7 @@
 -module(egre_protocol_event_pairs).
 
 -export([extract/2]).
+-export([get_events/1]).
 -export([get_events/2]).
 -export([write_events/1]).
 
@@ -34,6 +35,9 @@ extract(ApiFuns, PropertyTypes) ->
     end,
     egre_dbg:stop(),
     write_events(Events).
+
+get_events(ApiClauses) ->
+  get_events(ApiClauses, _PropertyTypes = #{}).
 
 get_events(ApiClauses, PropertyTypes) ->
     {Events, _, _} = lists:foldl(fun get_event_pairs/2, {[], #{}, PropertyTypes}, ApiClauses),
@@ -260,6 +264,10 @@ custom_data_bind_inference(_UnrecognizedMapBind, Acc) ->
 conjunction_type_inference(List, Acc) when is_list(List) ->
     lists:foldl(fun conjunction_type_inference/2, Acc, List);
 
+conjunction_type_inference({op, Op, Expression1, Expression2}, Acc)
+  when Op == 'andalso'; Op == 'orelse' ->
+    Acc1 = conjunction_type_inference(Expression1, Acc),
+    _Acc2 = conjunction_type_inference(Expression2, Acc1);
 conjunction_type_inference({op, '==', {var, Var1}, {var, Var2}}, Acc = TypeMap) ->
     case TypeMap of
         #{Var1 := _Type1, Var2 := _Type2} ->

@@ -269,6 +269,7 @@ inline_case_clause({clause, Expression, Guards, Body},
         lists:foldl(fun inline_form/2,
                     {Module, [], Funs, InlinedFuns},
                     Body),
+    %% TODO handle `orelse` in conjunctions
     Clauses =
         case Guards of
             [] ->

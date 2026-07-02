@@ -20,25 +20,26 @@
 -export([type_inference_plus/1]).
 -export([type_inference_recursive/1]).
 -export([type_inference_event_plus/1]).
+-export([type_inference_andalso/1]).
+
+% all() ->
+%     [no_events,
+%      terminal_event,
+%      action_reaction,
+%      resend_raw_event,
+%      resend_variable_event,
+%      modify_raw_event,
+%      broadcast_raw_event,
+%      type_inference_self,
+%      type_inference_is_pid,
+%      type_inference_is_binary,
+%      type_inference_equals,
+%      type_inference_plus,
+%      type_inference_event_plus,
+%      type_inference_recursive].
 
 all() ->
-    [no_events,
-     terminal_event,
-     action_reaction,
-     resend_raw_event,
-     resend_variable_event,
-     modify_raw_event,
-     broadcast_raw_event,
-     type_inference_self,
-     type_inference_is_pid,
-     type_inference_is_binary,
-     type_inference_equals,
-     type_inference_plus,
-     type_inference_event_plus,
-     type_inference_recursive].
-
-%all() ->
-    %[terminal_event].
+    [type_inference_andalso].
 
 no_events(_Config) ->
     Events = egre_protocol_event_pairs:get_events(?NO_EVENTS),
@@ -248,6 +249,27 @@ type_inference_recursive(_Config) ->
                         [{1, <<"Num1">>},
                          {2, <<"Num2">>}],
                         [{2, integer},
+                         {1, integer}]}
+                      ]],
+    ?assertEqual(ExpectedEvents, Events).
+
+type_inference_andalso(_Config) ->
+    Events = egre_protocol_event_pairs:get_events(?TYPE_INFERENCE_ANDALSO),
+    ExpectedEvents = [[<<"attack_resource">>,
+                       attempt,
+
+                       %% Action event
+                       {{1, 2},
+                        [{1, <<"Num1">>},
+                         {2, <<"Atom1">>}],
+                        [{2, atom},
+                         {1, integer}]},
+
+                       %% Reaction event
+                       {{1, 2},
+                        [{1, <<"Num1">>},
+                         {2, <<"Atom1">>}],
+                        [{2, atom},
                          {1, integer}]}
                       ]],
     ?assertEqual(ExpectedEvents, Events).

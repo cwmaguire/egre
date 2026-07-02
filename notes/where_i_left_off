@@ -2,6 +2,73 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2026-07-02   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+Created a note on how the protocol detection works.
+
+Working on doing type inference on `andalso` and `orelse` operators in guard clauses.
+
+The function that extracts properties and puts them in a map for the first argument is set in
+mud_SUITE.erl: it sets an application env var for egre setting the `extract_fun`. It's
+mud_util:extract_from_props/1.
+
+
+Hard to tell what the error is here:
+
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  ░
+  ░ TEST INFO: 1 test(s), 1 case(s) in 1 suite(s)
+  ░ 
+  ░ Testing dev.egre.egre_protocol_event_parsing_SUITE: Starting test, 1 test cases
+  ░ 
+  ░ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+  ░ egre_protocol_event_pairs:get_events failed
+  ░ Reason: {undef,[{egre_protocol_event_pairs,...},{...}|...]}
+  ░ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+  ░ 
+  ░ Testing dev.egre.egre_protocol_event_parsing_SUITE: *** FAILED test case 1 of 1 ***
+  ░ Testing dev.egre.egre_protocol_event_parsing_SUITE: TEST COMPLETE, 0 ok, 1 failed of 1 test cases
+  ░
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+  running ./c in egre_mud_1 works, so it seems like _protocol_pairs.erl is working.
+
+  Ah, I had changed egre_protocol_event_pairs:get_events from /1 to /2
+
+Hmm, I think I need to dig into how these tests work more:
+
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  ░
+  ░ ** exception error: {assertEqual,[{module,egre_protocol_event_parsing_SUITE},
+  ░                                   {line,290},
+  ░                                   {expression,"Events"},
+  ░                                   {expected,[[<<"attack_resource">>,attempt,
+  ░                                               {{1,2},[{1,<<"Num1">>},{2,<<"Atom1">>}],
+  ░                                                      [{1,integer}]},
+  ░                                               {{1,2},[{1,<<"Num1">>},{2,<<"Atom1">>}],
+  ░                                                      [{1,integer}]}],
+  ░                                              [<<"attack_resource">>,attempt,
+  ░                                               {{1,2},
+  ░                                                [{1,<<"Num1">>},{2,<<"Atom1">>}],
+  ░                                                [{2,atom},{1,integer}]},
+  ░                                               {{1,2},
+  ░                                                [{1,<<"Num1">>},{2,<<"Num2">>}],
+  ░                                                [{2,atom},{1,integer}]}]]},
+  ░                                   {value,[[<<"attack_resource">>,attempt,
+  ░                                            {{1,2},[{1,<<"Num1">>},{2,<<"Atom1">>}],[{2,atom}]},
+  ░                                            {{1,2},[{1,<<"Num1">>},{2,<<"Atom1">>}],[{2,atom}]}]]}]}
+  ░      in function  egre_protocol_event_parsing_SUITE:type_inference_orelse_andalso/1
+  ░      (test/egre_protocol_event_parsing_SUITE.erl:290
+  ░
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+  Hmm, I forgot that 'orelse' in function guard clauses should be stripped out.
+
+  Okay, fixed. The only `orelse` left is in case clause guards. I may need to fix that eventuall, or
+  convert the code to use just `;` and `,`.
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2026-07-01   ┃
 ┗━━━━━━━━━━━━━━━━┛
 

@@ -330,3 +330,24 @@
                 [{atom,broadcast},
                  {tuple, [{var, 'Num1'}, {var, 'Num2'}]}]}
               }]}]}}]).
+
+-define(TYPE_INFERENCE_ANDALSO,
+        [{{<<"attack_resource">>,attempt,1},
+          {clause,
+           [{tuple,
+             [{var, '_Map'},
+              {var,'_Props'},
+              {tuple,
+               [{var, 'Num1'},
+                {var, 'Atom1'}]},
+              {var,'_Context'}]}],
+           [{op, 'andalso',
+               {op, '==', {var, 'Num1'}, {integer, 1}},
+               {op, '==', {var, 'Atom1'}, {atom, ok}}}],
+           [{record, result,
+             [{record_field,
+               {atom,result},
+               {tuple,
+                [{atom,broadcast},
+                 {tuple, [{var, 'Num1'}, {var, 'Atom1'}]}]}
+              }]}]}}]).
