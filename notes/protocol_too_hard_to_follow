@@ -122,6 +122,13 @@ Three files:
 	an event, the event must have been subscribed to within the same rules handler module.
   - write out action+reaction pairs to the `pairs` file.
 
+- egre_protocol_event_chains
+  - find action+reaction pairs where the action doesn't match any reactions: these are the "chain
+    heads"
+  - build chains from chain heads using any matching action+reaction event pairs
+  - stop when we can't find any more pairs to add to chains
+  - write the chains out to file
+
 Testing:
 
   1. Modify the `t` shell script to specify the CT_SUITES you want to run
