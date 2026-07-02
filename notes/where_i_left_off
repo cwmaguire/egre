@@ -2,6 +2,24 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2026-07-01   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+I can now split up `orelse` disjunctions in guard clauses for api functions. 
+... and case guard disjunctions still work.
+
+I think I copied the code for decoupling function guard disjunctions and case guard disjunctions.
+The reason I was catching the empty list case in both was because in the case of function guards,
+I've already split them apart into separate function clauses by the time I've gotten to
+inline_form/2; however, when I'm in inline_form/2 I need to decouple the case guards. In order to
+use the same clause_scope_paths for each, I need to leave disjunctions alone, but I need to wrap up
+bare conjunctions (from case guards) as disjunctions.
+
+I just realized that I don't decouple boolean operators in case clause guards. That probably means
+that I don't do it for non-api (i.e. not attempt or succeed) functions either. Oh well. I'll add
+that if I ever need it.
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2026-06-30   ┃
 ┗━━━━━━━━━━━━━━━━┛
 

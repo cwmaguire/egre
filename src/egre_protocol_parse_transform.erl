@@ -9,23 +9,20 @@
 %% is_owner/2 and describe/4 are not being inlined
 
 parse_transform(Forms, _Options) ->
-    % io:format("egre_protocol_parse_transform - _Options: ~p~n", [_Options]),
-    % io:format("a: ~p~n", [?a]),
-    PropertyTypeModule = property_type_module(Forms),
-    io:format(user, "Property type module: ~p~n", [PropertyTypeModule]),
-    PropertyTypes =
-        case PropertyTypeModule of
-            undefined ->
-                [];
-            _ ->
-             PropertyTypeModule:property_types()
-        end,
-    io:format(user, "Property types: ~p~n", [PropertyTypes]),
-    %egre_dbg:add(egre_protocol_parse_transform, inline_form),
     InlinedApiFunctions = inline_flatten(Forms),
-    egre_protocol_event_pairs:extract(InlinedApiFunctions, PropertyTypes),
-    %io:format("Forms:~n~p~n", [Forms]),
+    pairs(Forms, InlinedApiFunctions),
     Forms.
+
+pairs(Forms, Functions) ->
+    egre_protocol_event_pairs:extract(Functions, property_types(Forms)).
+
+property_types(Forms) ->
+    case property_type_module(Forms) of
+        undefined ->
+            [];
+        Mod ->
+         Mod:property_types()
+    end.
 
 
  % {attribute,
@@ -117,10 +114,16 @@ inline_api_conjunction(Module, {clause, Args, GuardExpressions, Forms}, Funs) ->
 flatten_guard_branches([], Conjunctions) ->
     Conjunctions;
 flatten_guard_branches([{op, 'andalso', Expression1, Expression2} | Rest], Conjunctions) ->
+    io:format(user, "andalso exp1: ~p~n", [Expression1]),
+    io:format(user, "andalso exp2: ~p~n", [Expression2]),
     Branches1 = flatten_guard_branches([Expression1], [[]]),
     Branches2 = flatten_guard_branches([Expression2], [[]]),
+    io:format(user, "andalso Branch1: ~p~n"
+                    "andalso Branch2: ~p~n",
+                    [Branches1, Branches2]),
     NewBranches = [{op, 'andalso', B1, B2} || [B1] <- Branches1, [B2] <- Branches2],
-    NewConjunctions = [C ++ B || C <- Conjunctions, B <- NewBranches],
+    NewConjunctions = [C ++ [B] || C <- Conjunctions, B <- NewBranches],
+    io:format(user, "New conjunctions with andalso tails: ~p~n", [NewConjunctions]),
     flatten_guard_branches(Rest, NewConjunctions);
 flatten_guard_branches([{op, 'orelse', Expression1, Expression2} | Rest], Conjunctions) ->
     io:format(user, "orelse exp1: ~p~n", [Expression1]),
@@ -143,20 +146,12 @@ flatten_guard_branches([Expression | Rest], Conjunctions) ->
     flatten_guard_branches(Rest, [C ++ [Expression] || C <- Conjunctions]).
 
 inline_api_conjunction_branches(Module, {clause, Args, ConjunctionBranch, Forms}, Funs) ->
-    % TODO this seems like a no-op
-    Disjunction =
-        case ConjunctionBranch of
-            [] ->
-                [];
-            _ ->
-                ConjunctionBranch
-        end,
-    io:format(user, "Disjunction: ~p~n", [Disjunction]),
+    io:format(user, "ConjunctionBranch: ~p~n", [ConjunctionBranch]),
     {Module, Forms2, _Funs, _} =
         lists:foldl(fun inline_form/2,
                     {Module, _Forms = [], Funs, []},
                     Forms),
-        {clause, Args, Disjunction, Forms2}.
+        {clause, Args, ConjunctionBranch, Forms2}.
 
 inline_form(Form = {call, {atom, ErlangFun}, _CallArgs},
             {Module, Forms, Funs, InlinedFuns})
@@ -292,18 +287,20 @@ scope_paths({K, Clause}, ScopePaths) ->
 clause_scope_paths({clause, Head, MaybeGuards, Body}, ScopePaths) ->
     Guards =
         case MaybeGuards of
-            [] ->
-                [];
-            _ ->
-                [MaybeGuards]
+            EmptyDisjunction = [] ->
+                EmptyDisjunction;
+            Disjunction = [L | _] when is_list(L) ->
+                Disjunction;
+            Conjunction ->
+                _Disjunction = [Conjunction]
         end,
     [_ | _] = NewScopePaths = lists:foldl(fun body_scope_paths/2, [], Body),
     ScopePathClauses = [{clause, Head, Guards, ScopePath} || ScopePath <- NewScopePaths],
     ScopePaths ++ ScopePathClauses.
 
 body_scope_paths({'case', Expr, Clauses}, ScopePaths) ->
-    [_ | _] = NewExprPaths = lists:foldl(fun body_scope_paths/2, [], [Expr]),
-    [_ | _] = NewScopePaths = lists:foldl(fun clause_scope_paths/2, [], Clauses),
+    NewExprPaths = lists:foldl(fun body_scope_paths/2, [], [Expr]),
+    NewScopePaths = lists:foldl(fun clause_scope_paths/2, [], Clauses),
     NewCaseScopePaths =
         [[{'case', ExprPath, [NewScopePath]}] || [ExprPath] <- NewExprPaths, NewScopePath <- NewScopePaths],
     case ScopePaths of

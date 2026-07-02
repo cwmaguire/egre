@@ -21,6 +21,7 @@
 -export([level_1_decouple_disjunctions/1]).
 -export([decouple_orelse/1]).
 -export([decouple_andalso_orelse/1]).
+-export([decouple_andalso_andalso_orelse/1]).
 -export([case_no_guards_1_clause/1]).
 -export([case_no_guards_2_clauses/1]).
 -export([case_1_guard_2_clauses/1]).
@@ -29,30 +30,34 @@
 -export([case_nested/1]).
 -export([case_expression_is_nested_case/1]).
 
-% all() ->
-%     [level_1_call_no_args,
-%      level_1_call_1_literal_arg,
-%      level_1_call_1_var_arg,
-%      level_2_call_no_args,
-%      level_2_call_2_var_args,
-%      level_2_call_1_fun_arg,
-%      level_2_call_with_lc,
-%      level_2_call_recursive,
-%      level_1_decouple_disjunctions,
-%      decouple_orelse,
-%      case_no_guards_1_clause,
-%      case_no_guards_2_clauses,
-%      case_1_guard_2_clauses,
-%      case_2_guards_2_clauses,
-%      case_2_clauses_with_2_guards_each,
-%      case_nested,
-%      case_expression_is_nested_case].
+all() ->
+    [level_1_call_no_args,
+     level_1_call_1_literal_arg,
+     level_1_call_1_var_arg,
+     level_2_call_no_args,
+     level_2_call_2_var_args,
+     level_2_call_1_fun_arg,
+     level_2_call_with_lc,
+     level_2_call_recursive,
+     level_1_decouple_disjunctions,
+     decouple_orelse,
+     decouple_andalso_orelse,
+     decouple_andalso_andalso_orelse,
+     case_no_guards_1_clause,
+     case_no_guards_2_clauses,
+     case_1_guard_2_clauses,
+     case_2_guards_2_clauses,
+     case_2_clauses_with_2_guards_each,
+     case_nested,
+     case_expression_is_nested_case].
 
 % all() -> [level_1_decouple_disjunctions, decouple_orelse].
 
-all() -> [decouple_andalso_orelse].
+% all() -> [decouple_andalso_andalso_orelse].
+% all() -> [decouple_andalso_orelse].
 % all() -> [decouple_orelse].
 % all() -> [level_1_call_no_args].
+% all() -> [case_2_clauses_with_2_guards_each].
 
 % all() -> [level_1_decouple_disjunctions].
 
@@ -91,6 +96,7 @@ level_1_call_1_var_arg(Config) -> test(?FUNCTION_NAME, Config).
 level_1_decouple_disjunctions(Config) -> test(?FUNCTION_NAME, Config).
 decouple_orelse(Config) -> test(?FUNCTION_NAME, Config).
 decouple_andalso_orelse(Config) -> test(?FUNCTION_NAME, Config).
+decouple_andalso_andalso_orelse(Config) -> test(?FUNCTION_NAME, Config).
 level_2_call_no_args(Config) -> test(?FUNCTION_NAME, Config).
 level_2_call_2_var_args(Config) -> test(?FUNCTION_NAME, Config).
 level_2_call_1_fun_arg(Config) -> test(?FUNCTION_NAME, Config).
@@ -107,22 +113,25 @@ case_expression_is_nested_case(Config) -> test(?FUNCTION_NAME, Config).
 test(FileName = FunctionName, Config) ->
     compare(FunctionName, compile(FileName, Config)).
 
-compare(_Test, {Same, Same}) ->
+compare(_Test, {_, Same, Same}) ->
     ok;
-compare(Test, {ActualAst, ExpectedAst}) ->
+compare(Test, {OrigAst, ActualAst, ExpectedAst}) ->
+    OrigPretty = iolist_to_binary(re:replace(OrigAst, <<"\n| ">>, <<"">>, [global])),
     ExpectedPretty = iolist_to_binary(re:replace(ExpectedAst, <<"\n| ">>, <<"">>, [global])),
     ActualPretty = iolist_to_binary(re:replace(ActualAst, <<"\n| ">>, <<"">>, [global])),
-    ct:pal("Expected vs Actual AST for ~p:~n~p~n~n~p~n", [Test, ExpectedPretty, ActualPretty]),
+    ct:pal("Original vs Expected vs Actual AST for ~p:~n~p~n~n~p~n~n~p~n",
+           [Test, OrigPretty, ExpectedPretty, ActualPretty]),
     ct:fail("Mismatched AST for ~p", [Test]).
 
 compile(ModuleBaseName, Config) ->
     In = atom_to_list(ModuleBaseName) ++ "_in",
     Out = atom_to_list(ModuleBaseName) ++ "_out",
 
+    {ok, OrigData} = compile_(In, egre_protocol_id_transform, Config), 
     {ok, InData} = compile_(In, egre_protocol_parse_transform, Config),
     {ok, OutData} = compile_(Out, egre_protocol_id_transform, Config),
 
-    {InData, OutData}.
+    {OrigData, InData, OutData}.
 
 compile_(ModuleName, TransformModule, Config) ->
     Module = list_to_atom(ModuleName),
