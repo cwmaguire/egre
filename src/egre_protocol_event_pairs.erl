@@ -481,7 +481,8 @@ index_variable({var, Var}, {Index, Event, IndexedVariables, Types, TypeMap}) ->
     Types2 =
         case TypeMap of
             #{Var := Type} ->
-                [{Index, Type} | Types];
+                %[{Index, Type} | Types];
+                Types ++ [{Index, Type}];
             _ ->
                 Types
         end,
