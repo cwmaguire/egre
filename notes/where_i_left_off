@@ -12,6 +12,25 @@ event_chains reads events/*.bert and writes pairs and event_chains
 _event_chains:normalize_event_types/3 expects indexed types in order; _event_paris is putting the
 type indexes in the wrong order
 
+_event_pairs, when looking through the body of an API function (i.e. event handler) to see if we
+generate a new event, doesn't seem to dig into `Event = {Foo, bar, Baz}` to see if any of the
+variables in the new event tuple have matching types. For example, in egre_mud_1, the rule
+rules_item_inject_self has `NewEvent = {Object, Action, self()}` where we know `Action` is an atom.
+
+  It seems that ... we should call indexed_event on the tuple? (maybe, not sure)
+
+  Hmm, reaction_events should kick off maybe_result_record_field_event, which should capture the
+  {resent, Object, Event} from the 'result' record field and call indexed_event, which calls
+  index_variable on all the variables in the Event tuple.
+
+  Hmm, index variable _should_ find `Action` in the TypeMap
+
+  Ahh, the indexed types are coming back [{3,pid},{2,atom}]. Same problem.
+
+  It might be because `self()` {3, pid} is getting put in from of {2, atom}.
+
+  Yup, a *bunch* of `index_variable` calls were returning the types in the wrong order.
+
 ┏━━━━━━━━━━━━━━━━┓
 ┃   2026-07-02   ┃
 ┗━━━━━━━━━━━━━━━━┛

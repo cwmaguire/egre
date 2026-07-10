@@ -416,7 +416,11 @@ maybe_result_record_field_event({record_field,
                                  {atom, result},
                                  {tuple, [{atom, resend}, _Target, Event]}},
                                 State = #state{events = Events}) ->
-    State#state{events = [indexed_event(Event, State) | Events]};
+    % State#state{events = [indexed_event(Event, State) | Events]};
+
+    State2 = State#state{events = [indexed_event(Event, State) | Events]},
+    io:format(user, "maybe_result_record_field_event new state:~n~p~n", [State2]),
+    State2;
 maybe_result_record_field_event({record_field,
                                  {atom, result},
                                  {tuple, [{atom, broadcast}, Event]}},
@@ -475,9 +479,11 @@ index_variable({integer, Int}, {Index, Event, IndexedVariables, Types, TypeMap})
     {Index + 1,
      Event ++ [Index],
      IndexedVariables ++ [{Index, integer_to_binary(Int)}],
-     [{Index, integer} | Types],
+     % [{Index, integer} | Types],
+     Types ++ [{Index, integer}],
      TypeMap};
 index_variable({var, Var}, {Index, Event, IndexedVariables, Types, TypeMap}) ->
+    io:format(user, "Checking if var ~p has type in Types: ~p~n", [Var,  Types]),
     Types2 =
         case TypeMap of
             #{Var := Type} ->
@@ -486,6 +492,7 @@ index_variable({var, Var}, {Index, Event, IndexedVariables, Types, TypeMap}) ->
             _ ->
                 Types
         end,
+    io:format(user, "Maybe new types: ~p~n", [Types2]),
     {Index + 1,
      Event ++ [Index],
      IndexedVariables ++ [{Index, atom_to_binary(Var)}],
@@ -501,7 +508,8 @@ index_variable({op, Op, {var, Var1}, {var, Var2}}, {Index, Event, IndexedVariabl
     {Index + 1,
      Event ++ [Index],
      IndexedVariables ++ [{Index, BinExpression}],
-     [{Index, integer} | Types],
+     % [{Index, integer} | Types],
+     Types ++ [{Index, integer}],
      TypeMap#{Var1 => integer, Var2 => integer}};
 index_variable({atom, Atom}, {Index, Event, IndexedVariables, Types, TypeMap}) ->
     {Index,
@@ -513,7 +521,7 @@ index_variable({call, {atom, self}, []}, {Index, Event, IndexedVariables, Types,
     {Index + 1,
      Event ++ [Index],
      IndexedVariables ++ [{Index, <<"self()">>}],
-     [{Index, pid} | Types],
+     Types ++ [{Index, pid}],
      TypeMap};
 
 index_variable({match, {var, Var}, {record, RecordType, _Fields}},
@@ -522,7 +530,8 @@ index_variable({match, {var, Var}, {record, RecordType, _Fields}},
     {Index + 1,
      Event ++ [Index],
      IndexedVariables ++ [{Index, <<BinVar/binary>>}],
-     [{Index, RecordType} | Types],
+     % [{Index, RecordType} | Types],
+     Types ++ [{Index, RecordType}],
      TypeMap};
 index_variable({match, {var, Var}, {atom, _}},
                {Index, Event, IndexedVariables, Types, TypeMap}) ->
@@ -530,7 +539,8 @@ index_variable({match, {var, Var}, {atom, _}},
     {Index + 1,
      Event ++ [Index],
      IndexedVariables ++ [{Index, BinVar}],
-     [{Index, atom} | Types],
+     % [{Index, atom} | Types],
+     Types ++ [{Index, atom}],
      TypeMap};
 index_variable({match, {var, Var}, {nil}},
                {Index, Event, IndexedVariables, Types, TypeMap}) ->
@@ -538,7 +548,8 @@ index_variable({match, {var, Var}, {nil}},
     {Index + 1,
      Event ++ [Index],
      IndexedVariables ++ [{Index, <<VarBin/binary, " = []">>}],
-     [{Index, list} | Types],
+     % [{Index, list} | Types],
+     Types ++ [{Index, list}],
      TypeMap};
 index_variable({match, {var, Var}, Cons = {cons, _, _}},
                {Index, Event, IndexedVariables, Types, TypeMap}) ->
@@ -547,7 +558,8 @@ index_variable({match, {var, Var}, Cons = {cons, _, _}},
     {Index + 1,
      Event ++ [Index],
      IndexedVariables ++ [{Index, <<VarBin/binary, " = ", ConsBin/binary>>}],
-     [{Index, list} | Types],
+     % [{Index, list} | Types],
+     Types ++ [{Index, list}],
      TypeMap};
 
 %{match,{var,'_Phrase'},
@@ -560,7 +572,8 @@ index_variable({match, {var, Var}, {bin, _}},
     {Index + 1,
      Event ++ [Index],
      IndexedVariables ++ [{Index, <<VarBin/binary, " = <binary>">>}],
-     [{Index, list} | Types],
+     % [{Index, list} | Types],
+     Types ++ [{Index, list}],
      TypeMap};
 index_variable({record, RecordName, _Fields},
                {Index, Event, IndexedVariables, Types, TypeMap}) ->
@@ -570,7 +583,8 @@ index_variable({record, RecordName, _Fields},
     {Index + 1,
      Event ++ [Index],
      IndexedVariables ++ [{Index, RecordTypeBin}],
-     [{Index, RecordTypeAtom} | Types],
+     % [{Index, RecordTypeAtom} | Types],
+     Types ++ [{Index, RecordTypeAtom}],
      TypeMap};
 index_variable({tuple, Exprs},
                {NextIdx0, Event, IndexedVariables0, IndexedTypes0, TypeInfo0}) ->
@@ -598,7 +612,8 @@ index_variable({cons, {var, Var1}, {var, Var2}},
     {Index + 1,
      Event ++ [Index],
      IndexedVariables ++ [{Index, <<"[", BinVar1/binary, " | ", BinVar2/binary, "]">>}],
-     [{Index, list} | Types],
+     % [{Index, list} | Types],
+     Types ++ [{Index, list}],
      TypeMap};
 index_variable(Cons = {cons, _, _},
                {Index, Event, IndexedVariables, Types, TypeMap}) ->
@@ -606,7 +621,8 @@ index_variable(Cons = {cons, _, _},
     {Index + 1,
      Event ++ [Index],
      IndexedVariables ++ [{Index, ConsBin}],
-     [{Index, list} | Types],
+     % [{Index, list} | Types],
+     Types ++ [{Index, list}],
      TypeMap};
 index_variable({'case', _Expr, _Clauses},
                {Index, Event, IndexedVariables, Types, TypeMap}) ->
@@ -627,14 +643,16 @@ index_variable({bin, _},
     {Index + 1,
      Event ++ [Index],
      IndexedVariables ++ [{Index, <<"<binary>">>}],
-     [{Index, bin} | Types],
+     % [{Index, bin} | Types],
+     Types ++ [{Index, bin}],
      TypeMap};
 index_variable({nil},
                {Index, Event, IndexedVariables, Types, TypeMap}) ->
     {Index + 1,
      Event ++ [Index],
      IndexedVariables ++ [{Index, <<"[]">>}],
-     [{Index, list} | Types],
+     % [{Index, list} | Types],
+     Types ++ [{Index, list}],
      TypeMap}.
 
 
