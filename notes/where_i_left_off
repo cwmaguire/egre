@@ -2,6 +2,78 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2026-07-10   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+Ran chains on all the rules.
+
+  rules_char_inv has a case statement where Self is assigned to a var in a tuple but it's type isn't
+  captureed.
+
+  rules_char_inv has a call to get the owner out of Props, but I'm not picking up on 'owner' having
+  a type because it isn't matched in the CustomData map (first param of attempt tuple). I'm torn on
+  whether I should change my code to use the CustomData map (#{owner := Room}), use the
+  property_types type for proplists:get_value(owner, Props) calls, or just leave it. Ultimately, I'd
+  like the chains to be as tight as possible, and the code to be as loose as possible. If someone
+  else is writing the rules I don't want them to have to think about where they bind things from
+  Props just so the chains work out. I'd rather have a really robust parse transform.
+
+    If I want to find properties that have property types, then I have to figure out what the Props
+    variable is, then watch for that variable throughout the function.
+
+    The second attempt tuple item is the props: attempt({CustomData, Props, Event, Context}) ->
+
+    State carries variables ...  I don't remember what that's used for.
+
+      One reason is to track when an event is stored in a variable and then used in a reaction: we
+      use the variable to pull the actual event out of the variables map.
+
+    Crap.
+
+      ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+      ░
+      ░ Props2 = clear_child_character(Props, Item, Target),
+      ░ ... 
+      ░ 
+      ░ clear_child_character(Props, Item, Target) ->
+      ░     log([{?EVENT, give_item}, {?SOURCE, self()}, {?TARGET, Target}, {props, Props}]),
+      ░     egre:attempt(Item, {Target, clear_child_property, character, 'if', self()}),
+      ░     lists:keydelete(Item, 2, Props).
+      ░
+      ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+      So, recursing into a function-turned-case-statemtn isn't so bad: I think we already do that.
+      I'd just have to look for any lists:Function that took *any* props variable, and set the
+      target variable (i.e. Props2 in the case above) to be props variable.
+
+      All of this so I can track when a property key with a type (e.g. 'owner') is pulled out of the
+      properties "raw" instead of through the CustomData map.
+
+      Then again, if there's a typed property that *isn't* in the CustomData map, then this would
+      allow us to catch it. For instance, 'room' might not be in CustomData, but it might *always*
+      be a pid.
+
+      Hmm, if I assign something in a case statement, then reassign to the same variable outside the
+      case statement, I'd have to unassign the original variable ... which ... should be fine? We're
+      just tracking if at any point a variable is holding the Props and we pull a typed property out
+      of it. Once a variable goes out of scope we won't see it again until we reassign it. Oh,
+      unless we reassign it to something else that *isn't* the Props, but then ... well, it would be
+      a bit odd to pull a typed property out of it, but ... not impossible?
+
+      It looks like in reaction_events, where we track the variables and Props variables in the
+      state record, we ignore case expressions and guards: I guess the guards are fine, but the
+      expression might bind a Props var to something else.
+
+      This is getting really finicky. Do I really want to track everything you can possible do with
+      the Props var to make sure I can track when you pull a typed property out of it? Well, no, I
+      only need to track stuff I've done in my rules. That's what I've _been_ doing. No one is ever
+      going to make rules modules except for me.
+
+      I wonder if, instead of threading the tracking of Props vars through reaction_events/2, I
+      should just create a props_vars/n function. it wouldn't be completely redundant. Yeah, I think
+      I might do that.
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2026-07-09   ┃
 ┗━━━━━━━━━━━━━━━━┛
 
@@ -30,6 +102,15 @@ rules_item_inject_self has `NewEvent = {Object, Action, self()}` where we know `
   It might be because `self()` {3, pid} is getting put in from of {2, atom}.
 
   Yup, a *bunch* of `index_variable` calls were returning the types in the wrong order.
+
+  It seems that very few chains should start with a succeed because we have to subscribe to an event
+  before we can get succeed to be called; hmmm, does the attempt event not match the succeed event
+  for some reason?
+
+  TODO:
+  - do a full run (`touch src/rules/*; ./c` then run chains in erl)
+  - figure out why so many chains start with a succeed
+
 
 ┏━━━━━━━━━━━━━━━━┓
 ┃   2026-07-02   ┃
