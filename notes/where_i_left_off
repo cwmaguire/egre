@@ -2,6 +2,34 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2026-07-13   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+I wonder if I handle chaining together events where the reaction from the first pair has stricter
+types than the action from the second pair:
+
+           Action -> Reaction
+
+  Pair1:   {1:pid, attack, 2:binary} -> {1:pid, attack, 2:pid}
+  Pair2:     {1:pid, attack, 2:_} -> {1:pid, attack, 2:_, with, 3:pid
+
+  i.e. In the first pair, in the reaction, we know that 2 is pid
+       In the second pair, in the action, 2 can be anything
+
+Also, there has to be a final event that doesn't have a reaction, like a succeed that actually does
+something, and doesn't kick off anything else. i.e. a tail.
+
+This is becoming very complicated, but that's okay. It's fun.
+
+It does not escape me that I'm spending, probably, more time on type inference by tearing apart
+Erlang AST than I would if I'd just used a statically typed language. However, if I'm going to do
+gymnastics, I'd like to do them behind the scenes, for code tools, rather than have to program
+everything with static types.
+
+  I shudder to think of the horror of doing this kind of project with types. Every event would have
+  to be it's own type.
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2026-07-10   ┃
 ┗━━━━━━━━━━━━━━━━┛
 

@@ -54,10 +54,10 @@ inline_flatten([FilenameAttribute | Forms]) ->
                                inline_api_fun(K, V, Funs)
                            end,
                            ApiFuns),
-    io:format(user, "InlinedFuns: ~p~n", [InlinedFuns]),
+    %io:format(user, "InlinedFuns: ~p~n", [InlinedFuns]),
 
     [_ | _] = FunClauses = lists:foldl(fun flatten_clauses/2, [], maps:to_list(InlinedFuns)),
-    io:format(user, "FunClauses: ~p~n", [FunClauses]),
+    %io:format(user, "FunClauses: ~p~n", [FunClauses]),
     [_ | _] = ScopePaths = lists:foldl(fun scope_paths/2, [], FunClauses),
     SortedScopePaths = lists:sort(ScopePaths),
 
@@ -69,7 +69,7 @@ inline_flatten([FilenameAttribute | Forms]) ->
     ScopePaths.
 
 flatten_clauses({K, Clauses}, ModuleDisjunctions) ->
-    ct:pal("Clauses: ~p~n", [Clauses]),
+    %ct:pal("Clauses: ~p~n", [Clauses]),
     ModuleDisjunctionsNew = [{K, SplitConjunction} || Clause <- Clauses,
                                                  Disjunction <- Clause,
                                                  SplitConjunction <- Disjunction],
@@ -285,6 +285,12 @@ scope_paths({K, Clause}, ScopePaths) ->
     NewScopePaths = [{K, ClauseScopePath} || ClauseScopePath <- ClauseScopePaths],
     ScopePaths ++ NewScopePaths.
 
+%% TODO instead of flattening guard branches in inline_api_clause *and* here,
+%% see if we can do it once: we need to do it here for case clauses, but I think we could do it for
+%% api functions as well.
+%% It won't hurt to do it twice, I don't think, in the case where this is a function clause
+%% (i.e. we've already flattened the guard down as far as it will go, flattening again should be
+%%  idempotent)
 clause_scope_paths({clause, Head, MaybeGuards, Body}, ScopePaths) ->
     Guards =
         case MaybeGuards of
@@ -295,15 +301,34 @@ clause_scope_paths({clause, Head, MaybeGuards, Body}, ScopePaths) ->
             Conjunction ->
                 _Disjunction = [Conjunction]
         end,
+
+    FlattenedGuards =
+        case Guards of
+            _NoConjunctions = [] ->
+                EmptyDisjunction_ = [],
+                [EmptyDisjunction_];
+            Other ->
+                lists:foldl(fun(X, Acc) ->
+                                Acc ++ flatten_guard_branches(X, [[]])
+                            end,
+                            [],
+                            Other)
+        end,
+
+    io:format(user, "%%100%% Guards:~n~p~nFlattenedGuards:~n~p~n", [Guards, FlattenedGuards]),
     [_ | _] = NewScopePaths = lists:foldl(fun body_scope_paths/2, [], Body),
-    ScopePathClauses = [{clause, Head, Guards, ScopePath} || ScopePath <- NewScopePaths],
+    ScopePathClauses = [{clause, Head, Guards_, ScopePath} || ScopePath <- NewScopePaths, Guards_ <- FlattenedGuards],
     ScopePaths ++ ScopePathClauses.
 
 body_scope_paths({'case', Expr, Clauses}, ScopePaths) ->
+    io:format(user, "@@ Calling clause_scope_paths on case expression~n~p~n", [Expr]),
     NewExprPaths = lists:foldl(fun body_scope_paths/2, [], [Expr]),
+    io:format(user, "@@ NewExprPaths:~n~p~n", [NewExprPaths]),
     NewScopePaths = lists:foldl(fun clause_scope_paths/2, [], Clauses),
     NewCaseScopePaths =
         [[{'case', ExprPath, [NewScopePath]}] || [ExprPath] <- NewExprPaths, NewScopePath <- NewScopePaths],
+
+    io:format(user, "NewCaseScopePaths:~n~p~n", [NewCaseScopePaths]),
     case ScopePaths of
         [] ->
             NewCaseScopePaths;
@@ -338,6 +363,19 @@ body_scope_paths({match, Expr1, Expr2}, ScopePaths) ->
         _ ->
             [ScopePath ++ NewMatchScopePath || ScopePath <- ScopePaths, NewMatchScopePath <- NewMatchScopePaths]
     end;
+body_scope_paths({op, 'orelse', Expr1, Expr2}, ScopePaths) ->
+    NewExpr1Paths = lists:foldl(fun body_scope_paths/2, [], [Expr1]),
+    NewExpr2Paths = lists:foldl(fun body_scope_paths/2, [], [Expr2]),
+
+    NewOrelseScopePaths = NewExpr1Paths ++ NewExpr2Paths,
+
+    case ScopePaths of
+        [] ->
+            NewOrelseScopePaths;
+        _ ->
+            [ScopePath ++ NewOrelseScopePath || ScopePath <- ScopePaths, NewOrelseScopePath <- NewOrelseScopePaths]
+    end;
+
 body_scope_paths(NotCase, []) ->
     [[NotCase]];
 body_scope_paths(NotCase, ScopePaths) ->

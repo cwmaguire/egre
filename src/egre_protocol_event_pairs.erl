@@ -9,7 +9,8 @@
 
 -record(state, {events = [],
                 type_map = #{},
-                variables = #{}}).
+                variables = #{},
+                props = []}).
 
 %% FIXME
 %%  src/rules/rules_body_part_inject_self.erl: error in parse transform 'egre_protocol_parse_transform':
@@ -77,7 +78,7 @@ get_event_pairs(ApiFun = {{Module, Function, ?API_FUNCTION_ARITY}, {clause, Argu
     io:format(user, "~nTypeMap after conjunction type inference:~n~p~n", [TypeMap2]),
 
     % io:format(user, "TypeMap = ~p~n", [TypeMap]),
-    State = #state{type_map = TypeMap2},
+    % State = props(#state{type_map = TypeMap2}, Function, Arguments),
 
     Event = event(Function, Arguments),
 
@@ -87,6 +88,15 @@ get_event_pairs(ApiFun = {{Module, Function, ?API_FUNCTION_ARITY}, {clause, Argu
     io:format(user, "====================================~n", []),
     io:format(user, "fold reaction_events/2 over the ~p body~n", [Function]),
     io:format(user, "====================================~n", []),
+
+    State = 
+        case maybe_props_var(Function, Arguments) of
+            undefined ->
+                #state{};
+            PropsVar ->
+                State_ = #state{props = [PropsVar]},
+                lists:foldl(fun find_prop_types/2, State_, Body)
+        end,
 
     {ReactionEvents, TypeMap4} =
         case lists:foldl(fun reaction_events/2, State, Body) of
@@ -234,6 +244,24 @@ maybe_var_event(Event) ->
             {var, Event}
     end.
 
+maybe_props_var(attempt, [{match, _, {tuple, [_, {var, PropsVar}, _, _]}}]) ->
+    maybe_props_var(PropsVar);
+maybe_props_var(attempt, [{tuple, [_, {var, PropsVar}, _, _]}]) ->
+    maybe_props_var(PropsVar);
+maybe_props_var(succeed, [{tuple, [{var, PropsVar}, _, _]}]) ->
+    maybe_props_var(PropsVar);
+%% Not sure what this covers
+maybe_props_var(succeed, _) ->
+    undefined.
+
+maybe_props_var(PropsVar) ->
+    case atom_to_list(PropsVar) of
+        [$_ | _] ->
+            undefined;
+        _ ->
+            PropsVar
+    end.
+
 % CustomData can be:
 % #{}
 % #{foo := bar}
@@ -323,8 +351,49 @@ conjunction_type_inference_equals({bin, _}) ->
 conjunction_type_inference_equals(_) ->
     undefined.
 
-%% TODO go look at actual rules modules to see what kind of type inference cases I need
-%% to watch for.
+find_prop_types({match, {var, Var}, Forms}, State = #state{}) ->
+    State1 = find_prop_types(Forms, State),
+    case _IsPropsValue = does_return_properties(Forms) of
+        _VarIsProps = true ->
+            State1#state{props = [_NewPropsVar = Var, State1#state.props]};
+        _ ->
+            State1
+    end;
+find_prop_types({'case', Expression, [Clause = {clause, _, _, _}]}, State) ->
+    State1 = find_prop_types(Expression, State),
+    find_prop_types(Clause, State1);
+find_prop_types({op, 'orelse', Expression1, Expression2}, State) ->
+    State1 = find_prop_types(Expression1, State),
+    find_prop_types(Expression1, State1);
+find_prop_types({op, 'andalso', Expression1, Expression2}, State) ->
+    State1 = find_prop_types(Expression1, State),
+    find_prop_types(Expression1, State1);
+find_prop_types({call,
+                 {remote, {atom, egre_object}, {atom, has_pid}},
+                 [{var, Var1}, {var, Var2}]},
+                State = #state{type_map = TypeMap, props = Props}) ->
+    case TypeMap of
+        _Var2AlreadyTyped = #{Var2 := _} ->
+            State;
+        _ ->
+            case lists:member(Var1, Props) of
+                true ->
+                    State#state{type_map = TypeMap#{Var2 => pid}};
+                _ ->
+                    State
+            end
+    end;
+find_prop_types(_Form, State) ->
+    State.
+
+%% TODO: Is this an expression that returns a Props value?
+%% e.g. [{a, 1} || Props]
+%% That is, are we assigning Props to a new variable; if so, we'll need to track that this is now a
+%% variable holding properties. We need to monitor it for property types.
+%% e.g. if we pull 'a' out, then we know 'a' is an integer property. If we use a in a reaction event,
+%% then we know that event has an integer
+does_return_properties(Forms) ->
+    false.
 
 reaction_events({call,
                  {remote,
