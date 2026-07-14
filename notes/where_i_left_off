@@ -29,6 +29,42 @@ everything with static types.
   I shudder to think of the horror of doing this kind of project with types. Every event would have
   to be it's own type.
 
+... okay, I've split apart case expression and guard `orelse` expressions. Now I need to go back to
+_event_pairs.erl and finish working on finding property types. The example I'm working on is in
+rules_char_inv.erl in egre_mud_1:
+
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  ░
+  ░ attempt({#{}, Props, {Self, Action, Item}, _Context})
+  ░   when Self == self() andalso
+  ░        is_pid(Item) andalso
+  ░        (Action == get orelse Action == drop) ->
+  ░     Log = [{?SOURCE, Self},
+  ░            {?EVENT, Action},
+  ░            {?TARGET, Item}],
+  ░     case Action == get orelse egre_object:has_pid(Props, Item) of
+  ░         true ->
+  ░             ...
+  ░             #result{result = {resend, Self, {Item, move, from, Source, to, Target}},
+  ░
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+  In this case we can infer that Item must be a pid if we reach the true then either Action is
+  'get', or Item must be a pid. If we're in the "scope path" where Props has the pid Item, then when
+  we resend the event, we know that Item must be a pid. (If the action is 'drop' then we need to
+  make sure that "self" has that item before we resend an event to move it from "self" to the room
+  that "self" is in.)
+
+  We need to track what the Props value is called (which is almost always 'Props') and then we need
+  to track all the different ways we reassign it, and get stuff out of it. Not all the ways we *can*
+  reassign it, or get stuff out of it, just the ways I'm actually using in egre_mud_1. As I add more
+  cases I can update the protocol code, but for now I just want to get a file of event chains that
+  looks reasonable. The goal is to be able to compile the rules and then verify that the rules form
+  a sensible protocol where events follow a chain of logic.
+
+  This protocol inference might end up being harder than the MUD engine and my reference MUD
+  combined.
+
 ┏━━━━━━━━━━━━━━━━┓
 ┃   2026-07-10   ┃
 ┗━━━━━━━━━━━━━━━━┛
