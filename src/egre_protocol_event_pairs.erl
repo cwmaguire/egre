@@ -10,7 +10,8 @@
 -record(state, {events = [],
                 type_map = #{},
                 variables = #{},
-                props = []}).
+                props = [],
+                prop_types = #{}}).
 
 %% FIXME
 %%  src/rules/rules_body_part_inject_self.erl: error in parse transform 'egre_protocol_parse_transform':
@@ -26,6 +27,8 @@ extract(ApiFuns, PropertyTypes) ->
     % egre_dbg:add(egre_protocol_event_pairs, conjunction_type_inference),
     % egre_dbg:add(egre_protocol_event_pairs, indexed_event),
     % egre_dbg:add(egre_protocol_event_pairs, maybe_add_attempt_types),
+    egre_dbg:add(egre_protocol_event_pairs, find_prop_types),
+    egre_dbg:add(egre_protocol_event_pairs, maybe_property_type),
     Events = get_events(ApiFuns, PropertyTypes),
     Keys = [K || {K, _} <- ApiFuns],
     case Events of
@@ -84,19 +87,22 @@ get_event_pairs(ApiFun = {{Module, Function, ?API_FUNCTION_ARITY}, {clause, Argu
 
     io:format(user, "~nEvent: ~p~n", [Event]),
 
+    State = 
+        case maybe_props_var(Function, Arguments) of
+            undefined ->
+                #state{prop_types = PropertyTypes};
+            PropsVar ->
+                State_ = #state{prop_types = PropertyTypes,
+                                props = [PropsVar]},
+                lists:foldl(fun find_prop_types/2, State_, Body)
+        end,
+
+    io:format(user, "Prop Types:~n~p~n", [State#state.type_map]),
+
     io:format(user, "~n~n", []),
     io:format(user, "====================================~n", []),
     io:format(user, "fold reaction_events/2 over the ~p body~n", [Function]),
     io:format(user, "====================================~n", []),
-
-    State = 
-        case maybe_props_var(Function, Arguments) of
-            undefined ->
-                #state{};
-            PropsVar ->
-                State_ = #state{props = [PropsVar]},
-                lists:foldl(fun find_prop_types/2, State_, Body)
-        end,
 
     {ReactionEvents, TypeMap4} =
         case lists:foldl(fun reaction_events/2, State, Body) of
@@ -353,15 +359,30 @@ conjunction_type_inference_equals(_) ->
 
 find_prop_types({match, {var, Var}, Forms}, State = #state{}) ->
     State1 = find_prop_types(Forms, State),
-    case _IsPropsValue = does_return_properties(Forms) of
-        _VarIsProps = true ->
+    IsPropsValue = does_return_properties(Forms, State#state.props),
+    MaybePropType = maybe_property_type(Forms, State),
+    case {IsPropsValue, MaybePropType} of
+        {true, _} ->
             State1#state{props = [_NewPropsVar = Var, State1#state.props]};
-        _ ->
-            State1
+        {_, undefined} ->
+            State1;
+        {_, Type} ->
+            case State#state.type_map of
+                #{Var := _} ->
+                    State1;
+                _ ->
+                    State1#state{type_map = (State#state.type_map)#{Var => Type}}
+            end
     end;
 find_prop_types({'case', Expression, [Clause = {clause, _, _, _}]}, State) ->
     State1 = find_prop_types(Expression, State),
     find_prop_types(Clause, State1);
+find_prop_types({clause,
+                 Expression,
+                 Guards,
+                 Body},
+                State) ->
+    lists:foldl(fun find_prop_types/2, State, Body);
 find_prop_types({op, 'orelse', Expression1, Expression2}, State) ->
     State1 = find_prop_types(Expression1, State),
     find_prop_types(Expression1, State1);
@@ -392,8 +413,23 @@ find_prop_types(_Form, State) ->
 %% variable holding properties. We need to monitor it for property types.
 %% e.g. if we pull 'a' out, then we know 'a' is an integer property. If we use a in a reaction event,
 %% then we know that event has an integer
-does_return_properties(Forms) ->
+does_return_properties(_Forms, _Props) ->
     false.
+
+%% Are we pulling a typed property out of Props? If so, what type?
+maybe_property_type({call,
+                     {remote, {atom, proplists}, {atom, get_value}},
+                     [{atom, Prop}, {var, MaybePropsVar}]},
+                    #state{props = Props,
+                           prop_types = PropTypes}) ->
+    case {lists:member(MaybePropsVar, Props), PropTypes} of
+        {true, #{Prop := Type}} ->
+            Type;
+        _ ->
+            undefined
+    end;
+maybe_property_type(_, _) ->
+    undefined.
 
 reaction_events({call,
                  {remote,

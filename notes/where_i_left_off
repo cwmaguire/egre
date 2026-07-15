@@ -2,6 +2,31 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2026-07-14   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+In char_inv, prop_types should pick this up:
+
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  ░
+  ░ {match, {var,'Room'},
+  ░         {call,
+  ░             {remote,{atom,proplists},{atom,get_value}},
+  ░             [{atom,owner},{var,'Props'}]}},
+  ░
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+  Ah, does_return_properties is supposed to cover this.
+
+  I need to figure out two things:
+  - Does this code assign Props to a new variable?
+  - Does this code assign a typed property to a variable?
+
+  The above example from char_inv now works. We get #{'Room' => pid} because 'owner' is a pid
+  property according to the MUD's property types function. (See egre_mud_1's
+  mud_util:property_types/0
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2026-07-13   ┃
 ┗━━━━━━━━━━━━━━━━┛
 
