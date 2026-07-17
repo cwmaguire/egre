@@ -2,6 +2,21 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2026-07-16   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+For fun I'm going to split up the _pairs module into four different modules:
+- props inference
+- args inference
+- guards inference
+- pairs (reaction events)
+
+  I added another one for indexing events
+
+  This will also allow me to write more specific tests. I might just keep doing whole-file tests
+  though.
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2026-07-14   ┃
 ┗━━━━━━━━━━━━━━━━┛
 

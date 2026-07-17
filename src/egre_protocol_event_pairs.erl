@@ -6,6 +6,10 @@
 -export([write_events/1]).
 
 -define(API_FUNCTION_ARITY, 1).
+-define(PROPS, egre_protocol_props_inference).
+-define(ARGS, egre_protocol_args_inference).
+-define(GUARDS, egre_protocol_guards_inference).
+-define(INDEX, egre_protocol_event_index).
 
 -record(state, {events = [],
                 type_map = #{},
@@ -27,8 +31,8 @@ extract(ApiFuns, PropertyTypes) ->
     % egre_dbg:add(egre_protocol_event_pairs, conjunction_type_inference),
     % egre_dbg:add(egre_protocol_event_pairs, indexed_event),
     % egre_dbg:add(egre_protocol_event_pairs, maybe_add_attempt_types),
-    egre_dbg:add(egre_protocol_event_pairs, find_prop_types),
-    egre_dbg:add(egre_protocol_event_pairs, maybe_property_type),
+    egre_dbg:add(?PROPS, find_prop_types),
+    egre_dbg:add(?PROPS, maybe_property_type),
     Events = get_events(ApiFuns, PropertyTypes),
     Keys = [K || {K, _} <- ApiFuns],
     case Events of
@@ -73,10 +77,10 @@ get_event_pairs(ApiFun = {{Module, Function, ?API_FUNCTION_ARITY}, {clause, Argu
     io:format(user, "Body: ~n~p~n~n", [Body]),
 
     io:format(user, "Getting custom data types with PropertyTypes: ~p~n", [PropertyTypes]),
-    TypeMap1 = arguments_type_inference(Function, Arguments, PropertyTypes),
+    TypeMap1 = ?ARGS:infer(Function, Arguments, PropertyTypes),
     io:format(user, "~nTypeMap after custom data type inference:~n~p~n", [TypeMap1]),
     % TypeMap1 = #{},
-    TypeMap2 = lists:foldl(fun conjunction_type_inference/2, TypeMap1, Conjunction),
+    TypeMap2 = lists:foldl(fun ?GUARDS:infer/2, TypeMap1, Conjunction),
 
     io:format(user, "~nTypeMap after conjunction type inference:~n~p~n", [TypeMap2]),
 
@@ -88,13 +92,13 @@ get_event_pairs(ApiFun = {{Module, Function, ?API_FUNCTION_ARITY}, {clause, Argu
     io:format(user, "~nEvent: ~p~n", [Event]),
 
     State = 
-        case maybe_props_var(Function, Arguments) of
+        case ?PROPS:maybe_props_var(Function, Arguments) of
             undefined ->
                 #state{prop_types = PropertyTypes};
             PropsVar ->
                 State_ = #state{prop_types = PropertyTypes,
                                 props = [PropsVar]},
-                lists:foldl(fun find_prop_types/2, State_, Body)
+                lists:foldl(fun ?PROPS:find_prop_types/2, State_, Body)
         end,
 
     io:format(user, "Prop Types:~n~p~n", [State#state.type_map]),
@@ -124,7 +128,7 @@ get_event_pairs(ApiFun = {{Module, Function, ?API_FUNCTION_ARITY}, {clause, Argu
 
     ActionEvent =
         {IndexedEvent, IndexedVariables, IndexedTypes} =
-            indexed_event(Event, State#state{type_map = TypeMap4}),
+            ?INDEX:index_event(Event, State#state{type_map = TypeMap4}),
 
     io:format(user, "IndexedEvent: ~p~n", [IndexedEvent]),
     io:format(user, "IndexedVariables: ~p~n", [IndexedVariables]),
@@ -250,187 +254,6 @@ maybe_var_event(Event) ->
             {var, Event}
     end.
 
-maybe_props_var(attempt, [{match, _, {tuple, [_, {var, PropsVar}, _, _]}}]) ->
-    maybe_props_var(PropsVar);
-maybe_props_var(attempt, [{tuple, [_, {var, PropsVar}, _, _]}]) ->
-    maybe_props_var(PropsVar);
-maybe_props_var(succeed, [{tuple, [{var, PropsVar}, _, _]}]) ->
-    maybe_props_var(PropsVar);
-%% Not sure what this covers
-maybe_props_var(succeed, _) ->
-    undefined.
-
-maybe_props_var(PropsVar) ->
-    case atom_to_list(PropsVar) of
-        [$_ | _] ->
-            undefined;
-        _ ->
-            PropsVar
-    end.
-
-% CustomData can be:
-% #{}
-% #{foo := bar}
-% #{foo := {body_part, Pid, BodyPart, Ref}
-
-arguments_type_inference(attempt, _Args = [{tuple, [_CustomData = {map, []}, _, _, _]}], _PropertyTypes) ->
-    _NoCustomDataTypesInferred = #{};
-arguments_type_inference(attempt, _Args = [{tuple, [_CustomData = {map, Binds}, _, _, _]}], PropertyTypes) ->
-    {TypeMap, _} = lists:foldl(fun custom_data_bind_inference/2, {#{}, PropertyTypes}, Binds),
-    TypeMap;
-arguments_type_inference(_, _, _) ->
-    _NoCustomDataTypesInferred = #{}.
-
-custom_data_bind_inference({map_field_exact, {atom, Field}, {var, Var}},
-                           Acc = {TypeMap, PropertyTypes}) ->
-    case PropertyTypes of
-        #{Field := Type} ->
-            {TypeMap#{Var => Type}, PropertyTypes};
-        _ ->
-            Acc
-    end;
-custom_data_bind_inference(_UnrecognizedMapBind, Acc) ->
-    Acc.
-
-
-%[{op,'==',{var,'Self'},{call,{atom,self},[]}}],#{}
-
-conjunction_type_inference(List, Acc) when is_list(List) ->
-    lists:foldl(fun conjunction_type_inference/2, Acc, List);
-
-conjunction_type_inference({op, Op, Expression1, Expression2}, Acc)
-  when Op == 'andalso'; Op == 'orelse' ->
-    Acc1 = conjunction_type_inference(Expression1, Acc),
-    _Acc2 = conjunction_type_inference(Expression2, Acc1);
-conjunction_type_inference({op, '==', {var, Var1}, {var, Var2}}, Acc = TypeMap) ->
-    case TypeMap of
-        #{Var1 := _Type1, Var2 := _Type2} ->
-            Acc;
-        #{Var1 := Type} ->
-            TypeMap#{Var2 => Type};
-        #{Var2 := Type} ->
-            TypeMap#{Var1 => Type};
-        _ ->
-            Acc
-    end;
-conjunction_type_inference({op, '==', Operand1, {var, Var}}, Acc) ->
-    conjunction_type_inference( {op, '==', {var, Var}, Operand1}, Acc);
-conjunction_type_inference({op, '==', {var, Var}, Operand1}, Acc = TypeMap) ->
-    case conjunction_type_inference_equals(Operand1) of
-        undefined ->
-            Acc;
-        Type ->
-            TypeMap#{Var => Type}
-    end;
-conjunction_type_inference({call, {atom, is_pid}, [{var, Var}]}, TypeMap) ->
-    TypeMap#{Var => pid};
-conjunction_type_inference({call, {atom, is_binary}, [{var, Var}]}, TypeMap) ->
-    TypeMap#{Var => binary};
-conjunction_type_inference({match, {var, Var1}, {var, Var2}}, Acc = TypeMap) ->
-    case TypeMap of
-        #{Var2 := Type} ->
-            TypeMap#{Var1 => Type};
-        _ ->
-            Acc
-    end;
-conjunction_type_inference(_Other, Acc) ->
-    Acc.
-
-conjunction_type_inference_equals({call, {atom, self}, []}) ->
-    pid;
-conjunction_type_inference_equals({atom, _}) ->
-    atom;
-conjunction_type_inference_equals({integer, _}) ->
-    integer;
-conjunction_type_inference_equals({float, _}) ->
-    float;
-conjunction_type_inference_equals({string, _}) ->
-    string;
-conjunction_type_inference_equals({char, _}) ->
-    char;
-conjunction_type_inference_equals({nil}) ->
-    list;
-conjunction_type_inference_equals({cons, _}) ->
-    list;
-conjunction_type_inference_equals({bin, _}) ->
-    binary;
-conjunction_type_inference_equals(_) ->
-    undefined.
-
-find_prop_types({match, {var, Var}, Forms}, State = #state{}) ->
-    State1 = find_prop_types(Forms, State),
-    IsPropsValue = does_return_properties(Forms, State#state.props),
-    MaybePropType = maybe_property_type(Forms, State),
-    case {IsPropsValue, MaybePropType} of
-        {true, _} ->
-            State1#state{props = [_NewPropsVar = Var, State1#state.props]};
-        {_, undefined} ->
-            State1;
-        {_, Type} ->
-            case State#state.type_map of
-                #{Var := _} ->
-                    State1;
-                _ ->
-                    State1#state{type_map = (State#state.type_map)#{Var => Type}}
-            end
-    end;
-find_prop_types({'case', Expression, [Clause = {clause, _, _, _}]}, State) ->
-    State1 = find_prop_types(Expression, State),
-    find_prop_types(Clause, State1);
-find_prop_types({clause,
-                 Expression,
-                 Guards,
-                 Body},
-                State) ->
-    lists:foldl(fun find_prop_types/2, State, Body);
-find_prop_types({op, 'orelse', Expression1, Expression2}, State) ->
-    State1 = find_prop_types(Expression1, State),
-    find_prop_types(Expression1, State1);
-find_prop_types({op, 'andalso', Expression1, Expression2}, State) ->
-    State1 = find_prop_types(Expression1, State),
-    find_prop_types(Expression1, State1);
-find_prop_types({call,
-                 {remote, {atom, egre_object}, {atom, has_pid}},
-                 [{var, Var1}, {var, Var2}]},
-                State = #state{type_map = TypeMap, props = Props}) ->
-    case TypeMap of
-        _Var2AlreadyTyped = #{Var2 := _} ->
-            State;
-        _ ->
-            case lists:member(Var1, Props) of
-                true ->
-                    State#state{type_map = TypeMap#{Var2 => pid}};
-                _ ->
-                    State
-            end
-    end;
-find_prop_types(_Form, State) ->
-    State.
-
-%% TODO: Is this an expression that returns a Props value?
-%% e.g. [{a, 1} || Props]
-%% That is, are we assigning Props to a new variable; if so, we'll need to track that this is now a
-%% variable holding properties. We need to monitor it for property types.
-%% e.g. if we pull 'a' out, then we know 'a' is an integer property. If we use a in a reaction event,
-%% then we know that event has an integer
-does_return_properties(_Forms, _Props) ->
-    false.
-
-%% Are we pulling a typed property out of Props? If so, what type?
-maybe_property_type({call,
-                     {remote, {atom, proplists}, {atom, get_value}},
-                     [{atom, Prop}, {var, MaybePropsVar}]},
-                    #state{props = Props,
-                           prop_types = PropTypes}) ->
-    case {lists:member(MaybePropsVar, Props), PropTypes} of
-        {true, #{Prop := Type}} ->
-            Type;
-        _ ->
-            undefined
-    end;
-maybe_property_type(_, _) ->
-    undefined.
-
 reaction_events({call,
                  {remote,
                   {atom, egre},
@@ -438,7 +261,7 @@ reaction_events({call,
                  [_Target,
                   Event | _MaybeSub]},
                 State = #state{events = Events}) ->
-    ReactionEvent = indexed_event(Event, State),
+    ReactionEvent = ?INDEX:index_event(Event, State),
     State#state{events = [ReactionEvent | Events]};
 reaction_events({call,
                  {remote,
@@ -448,7 +271,7 @@ reaction_events({call,
                   _Target,
                   Event]},
                 State = #state{events = Events}) ->
-    ReactionEvent = indexed_event(Event, State),
+    ReactionEvent = ?INDEX:index_event(Event, State),
     State#state{events = [ReactionEvent | Events]};
 reaction_events({record, result, RecordFields},
                 State) ->
@@ -464,7 +287,7 @@ reaction_events(Match = {match, {var, Var1}, {var, Var2}},
                 Variables#{Var1 => Var2}
         end,
 
-    TypeMap2 = conjunction_type_inference(Match, TypeMap),
+    TypeMap2 = ?GUARDS:infer(Match, TypeMap),
     State#state{variables = Variables2,
                 type_map = TypeMap2};
 % TODO consider other cases where a bare '+' might occur,
@@ -523,261 +346,27 @@ maybe_result_record_field_event({record_field,
                                 State = #state{events = Events}) ->
     % State#state{events = [indexed_event(Event, State) | Events]};
 
-    State2 = State#state{events = [indexed_event(Event, State) | Events]},
+    State2 = State#state{events = [?INDEX:index_event(Event, State) | Events]},
     io:format(user, "maybe_result_record_field_event new state:~n~p~n", [State2]),
     State2;
 maybe_result_record_field_event({record_field,
                                  {atom, result},
                                  {tuple, [{atom, broadcast}, Event]}},
                                 State = #state{events = Events}) ->
-    State#state{events = [indexed_event(Event, State) | Events]};
+    State#state{events = [?INDEX:index_event(Event, State) | Events]};
 maybe_result_record_field_event({record_field,
                                  {atom, event},
                                  Event = {TupleOrVar, _}},
                                 State = #state{events = Events})
   when TupleOrVar == tuple;
        TupleOrVar == var ->
-    State#state{events = [indexed_event(Event, State) | Events]};
+    State#state{events = [?INDEX:index_event(Event, State) | Events]};
 maybe_result_record_field_event(_, State) ->
     State.
 
 % {match,{var,'_Active'},{cons,{var,'_'},{var,'_'}}}
 
-indexed_event({var, '_'}, _) ->
-    {[], [], []};
-indexed_event({match, {var, MaybeIgnored}, Event},
-              State = #state{variables = Variables}) ->
-    case atom_to_list(MaybeIgnored) of
-        [$_ | _] ->
-            indexed_event(Event, State);
-        _ ->
-            indexed_event(Event, State#state{variables = Variables#{MaybeIgnored => Event}})
-    end;
-indexed_event({var, EventVar}, State = #state{variables = Variables}) ->
-    %io:format(user, "EventVar = ~p~n", [EventVar]),
-    %io:format(user, "State = ~p~n", [State]),
-    case Variables of
-        #{EventVar := Event} ->
-            indexed_event(Event, State);
-        _ ->
-            {[], [], []}
-    end;
-indexed_event({tuple, Event}, #state{type_map = TypeMap}) ->
-    Acc = {1,
-           _Event = [],
-           _Variables = [],
-           _Types = [],
-           TypeMap},
-    {_NextIdx,
-     [_ | _] = IndexedEvent,
-     IndexedVariables,
-     IndexedTypes,
-     _TypeInf} =
-        lists:foldl(fun index_variable/2, Acc, Event),
-    IndexedEventTuple = list_to_tuple(IndexedEvent),
-    {IndexedEventTuple, IndexedVariables, IndexedTypes};
-indexed_event({call, {atom, Fun}, [{var, Var}]}, _State) ->
-    VarBin = atom_to_binary(Var),
-    {{Fun, '(', 1, ')'}, [{1, VarBin}], []}.
-
-index_variable({integer, Int}, {Index, Event, IndexedVariables, Types, TypeMap}) ->
-    {Index + 1,
-     Event ++ [Index],
-     IndexedVariables ++ [{Index, integer_to_binary(Int)}],
-     % [{Index, integer} | Types],
-     Types ++ [{Index, integer}],
-     TypeMap};
-index_variable({var, Var}, {Index, Event, IndexedVariables, Types, TypeMap}) ->
-    io:format(user, "Checking if var ~p has type in Types: ~p~n", [Var,  Types]),
-    Types2 =
-        case TypeMap of
-            #{Var := Type} ->
-                %[{Index, Type} | Types];
-                Types ++ [{Index, Type}];
-            _ ->
-                Types
-        end,
-    io:format(user, "Maybe new types: ~p~n", [Types2]),
-    {Index + 1,
-     Event ++ [Index],
-     IndexedVariables ++ [{Index, atom_to_binary(Var)}],
-     Types2,
-     TypeMap};
-index_variable({op, Op, {var, Var1}, {var, Var2}}, {Index, Event, IndexedVariables, Types, TypeMap})
-  when Op == '+';
-       Op == '-' ->
-    BinOp = atom_to_binary(Op),
-    BinVar1 = atom_to_binary(Var1),
-    BinVar2 = atom_to_binary(Var2),
-    BinExpression = <<"(", BinVar1/binary, " ", BinOp/binary, " ", BinVar2/binary, ")">>,
-    {Index + 1,
-     Event ++ [Index],
-     IndexedVariables ++ [{Index, BinExpression}],
-     % [{Index, integer} | Types],
-     Types ++ [{Index, integer}],
-     TypeMap#{Var1 => integer, Var2 => integer}};
-index_variable({atom, Atom}, {Index, Event, IndexedVariables, Types, TypeMap}) ->
-    {Index,
-     Event ++ [Atom],
-     IndexedVariables,
-     Types,
-     TypeMap};
-index_variable({call, {atom, self}, []}, {Index, Event, IndexedVariables, Types, TypeMap}) ->
-    {Index + 1,
-     Event ++ [Index],
-     IndexedVariables ++ [{Index, <<"self()">>}],
-     Types ++ [{Index, pid}],
-     TypeMap};
-
-index_variable({match, {var, Var}, {record, RecordType, _Fields}},
-               {Index, Event, IndexedVariables, Types, TypeMap}) ->
-    BinVar = atom_to_binary(Var),
-    {Index + 1,
-     Event ++ [Index],
-     IndexedVariables ++ [{Index, <<BinVar/binary>>}],
-     % [{Index, RecordType} | Types],
-     Types ++ [{Index, RecordType}],
-     TypeMap};
-index_variable({match, {var, Var}, {atom, _}},
-               {Index, Event, IndexedVariables, Types, TypeMap}) ->
-    BinVar = atom_to_binary(Var),
-    {Index + 1,
-     Event ++ [Index],
-     IndexedVariables ++ [{Index, BinVar}],
-     % [{Index, atom} | Types],
-     Types ++ [{Index, atom}],
-     TypeMap};
-index_variable({match, {var, Var}, {nil}},
-               {Index, Event, IndexedVariables, Types, TypeMap}) ->
-    VarBin = atom_to_binary(Var),
-    {Index + 1,
-     Event ++ [Index],
-     IndexedVariables ++ [{Index, <<VarBin/binary, " = []">>}],
-     % [{Index, list} | Types],
-     Types ++ [{Index, list}],
-     TypeMap};
-index_variable({match, {var, Var}, Cons = {cons, _, _}},
-               {Index, Event, IndexedVariables, Types, TypeMap}) ->
-    VarBin = atom_to_binary(Var),
-    ConsBin = serialize_cons(Cons),
-    {Index + 1,
-     Event ++ [Index],
-     IndexedVariables ++ [{Index, <<VarBin/binary, " = ", ConsBin/binary>>}],
-     % [{Index, list} | Types],
-     Types ++ [{Index, list}],
-     TypeMap};
-
 %{match,{var,'_Phrase'},
        %{bin,[{bin_element,{string,"quest "},default,default},
              %{bin_element,{var,'QuestName'},default,[binary]}]}}
-
-index_variable({match, {var, Var}, {bin, _}},
-               {Index, Event, IndexedVariables, Types, TypeMap}) ->
-    VarBin = atom_to_binary(Var),
-    {Index + 1,
-     Event ++ [Index],
-     IndexedVariables ++ [{Index, <<VarBin/binary, " = <binary>">>}],
-     % [{Index, list} | Types],
-     Types ++ [{Index, list}],
-     TypeMap};
-index_variable({record, RecordName, _Fields},
-               {Index, Event, IndexedVariables, Types, TypeMap}) ->
-    RecordNameBin = atom_to_binary(RecordName),
-    RecordTypeBin = <<"#", RecordNameBin/binary, "{}">>,
-    RecordTypeAtom = binary_to_atom(RecordTypeBin),
-    {Index + 1,
-     Event ++ [Index],
-     IndexedVariables ++ [{Index, RecordTypeBin}],
-     % [{Index, RecordTypeAtom} | Types],
-     Types ++ [{Index, RecordTypeAtom}],
-     TypeMap};
-index_variable({tuple, Exprs},
-               {NextIdx0, Event, IndexedVariables0, IndexedTypes0, TypeInfo0}) ->
-    Acc = {NextIdx0,
-           [],
-           IndexedVariables0,
-           IndexedTypes0,
-           TypeInfo0},
-    {NextIdx,
-     [_ | _] = IndexedTuple,
-     IndexedVariables,
-     IndexedTypes,
-     TypeInf} =
-        lists:foldl(fun index_variable/2, Acc, Exprs),
-    {NextIdx,
-     Event ++ [list_to_tuple(IndexedTuple)],
-     IndexedVariables,
-     IndexedTypes,
-     TypeInf};
-%% TODO use {cons, _, _} logic, since this is a subset of that
-index_variable({cons, {var, Var1}, {var, Var2}},
-               {Index, Event, IndexedVariables, Types, TypeMap}) ->
-    BinVar1 = atom_to_binary(Var1),
-    BinVar2 = atom_to_binary(Var2),
-    {Index + 1,
-     Event ++ [Index],
-     IndexedVariables ++ [{Index, <<"[", BinVar1/binary, " | ", BinVar2/binary, "]">>}],
-     % [{Index, list} | Types],
-     Types ++ [{Index, list}],
-     TypeMap};
-index_variable(Cons = {cons, _, _},
-               {Index, Event, IndexedVariables, Types, TypeMap}) ->
-    ConsBin = serialize_cons(Cons),
-    {Index + 1,
-     Event ++ [Index],
-     IndexedVariables ++ [{Index, ConsBin}],
-     % [{Index, list} | Types],
-     Types ++ [{Index, list}],
-     TypeMap};
-index_variable({'case', _Expr, _Clauses},
-               {Index, Event, IndexedVariables, Types, TypeMap}) ->
-    {Index + 1,
-     Event ++ [Index],
-     IndexedVariables ++ [{Index, <<"case">>}],
-     Types,
-     TypeMap};
-index_variable({op, _Op, _Operand},
-               {Index, Event, IndexedVariables, Types, TypeMap}) ->
-    {Index + 1,
-     Event ++ [Index],
-     IndexedVariables ++ [{Index, <<"operation">>}],
-     Types,
-     TypeMap};
-index_variable({bin, _},
-               {Index, Event, IndexedVariables, Types, TypeMap}) ->
-    {Index + 1,
-     Event ++ [Index],
-     IndexedVariables ++ [{Index, <<"<binary>">>}],
-     % [{Index, bin} | Types],
-     Types ++ [{Index, bin}],
-     TypeMap};
-index_variable({nil},
-               {Index, Event, IndexedVariables, Types, TypeMap}) ->
-    {Index + 1,
-     Event ++ [Index],
-     IndexedVariables ++ [{Index, <<"[]">>}],
-     % [{Index, list} | Types],
-     Types ++ [{Index, list}],
-     TypeMap}.
-
-
-serialize_cons(Cons) ->
-    serialize_cons(Cons, <<>>).
-
-serialize_cons({cons, X, {nil}}, Bin) ->
-    XBin = serialize(X),
-    <<"[", Bin/binary, ", ", XBin/binary, "]">>;
-serialize_cons({cons, X, Y = {var, _}}, Bin) ->
-    XBin = serialize(X),
-    YBin = serialize(Y),
-    <<"[", Bin/binary, ", ", XBin/binary, " | ", YBin/binary, "]">>;
-serialize_cons({cons, X, Rest}, Bin) ->
-    XBin = serialize(X),
-    Bin2 = <<Bin/binary, ", ", XBin/binary>>,
-    serialize_cons(Rest, Bin2).
-
-serialize({bin, [{bin_element, {var, Var}, default, [binary]}]}) ->
-    atom_to_binary(Var);
-serialize({var, Var}) ->
-    atom_to_binary(Var).
 
