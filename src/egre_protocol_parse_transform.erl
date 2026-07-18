@@ -9,8 +9,8 @@
 %% is_owner/2 and describe/4 are not being inlined
 
 parse_transform(Forms, _Options) ->
-    InlinedApiFunctions = inline_flatten(Forms),
-    pairs(Forms, InlinedApiFunctions),
+    _InlinedApiFunctions = inline_flatten(Forms),
+    %% pairs(Forms, InlinedApiFunctions),
     Forms.
 
 pairs(Forms, Functions) ->
@@ -299,7 +299,7 @@ clause_scope_paths({clause, Head, MaybeGuards, Body}, ScopePaths) ->
             Disjunction = [L | _] when is_list(L) ->
                 Disjunction;
             Conjunction ->
-                _Disjunction = [[Conjunction]]
+                _Disjunction = [Conjunction]
         end,
 
     FlattenedGuards =
@@ -308,11 +308,13 @@ clause_scope_paths({clause, Head, MaybeGuards, Body}, ScopePaths) ->
                 EmptyDisjunction_ = [],
                 [EmptyDisjunction_];
             Other ->
-                lists:foldl(fun(X, Acc) ->
-                                Acc ++ flatten_guard_branches(X, [[]])
-                            end,
-                            [],
-                            Other)
+                Conjunctions = 
+                  lists:foldl(fun(X, Acc) ->
+                                  Acc ++ flatten_guard_branches(X, [[]])
+                              end,
+                              [],
+                              Other),
+                [[C] || C <- Conjunctions]
         end,
 
     io:format(user, "%%100%% Guards:~n~p~nFlattenedGuards:~n~p~n", [Guards, FlattenedGuards]),
