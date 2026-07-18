@@ -31,8 +31,8 @@ extract(ApiFuns, PropertyTypes) ->
     % egre_dbg:add(egre_protocol_event_pairs, conjunction_type_inference),
     % egre_dbg:add(egre_protocol_event_pairs, indexed_event),
     % egre_dbg:add(egre_protocol_event_pairs, maybe_add_attempt_types),
-    egre_dbg:add(?PROPS, find_prop_types),
-    egre_dbg:add(?PROPS, maybe_property_type),
+    % egre_dbg:add(?PROPS, find_prop_types),
+    % egre_dbg:add(?PROPS, maybe_property_type),
     Events = get_events(ApiFuns, PropertyTypes),
     Keys = [K || {K, _} <- ApiFuns],
     case Events of
@@ -61,7 +61,7 @@ write_events(Events = [[Module | _] | _]) ->
 
 get_event_pairs({_K, {clause, [{var, '_'}], _, _}}, Acc) ->
     Acc;
-get_event_pairs(ApiFun = {{Module, Function, ?API_FUNCTION_ARITY}, {clause, Arguments, Conjunction, Body}},
+get_event_pairs(ApiFun = {{Module, Function, ?API_FUNCTION_ARITY}, {clause, Arguments, [Conjunction], Body}},
                 {Events, AttemptTypeIndexes, PropertyTypes})
   when Function == attempt;
        Function == succeed ->
@@ -94,9 +94,11 @@ get_event_pairs(ApiFun = {{Module, Function, ?API_FUNCTION_ARITY}, {clause, Argu
     State = 
         case ?PROPS:maybe_props_var(Function, Arguments) of
             undefined ->
-                #state{prop_types = PropertyTypes};
+                #state{type_map = TypeMap2,
+                       prop_types = PropertyTypes};
             PropsVar ->
-                State_ = #state{prop_types = PropertyTypes,
+                State_ = #state{type_map = TypeMap2,
+                                prop_types = PropertyTypes,
                                 props = [PropsVar]},
                 lists:foldl(fun ?PROPS:find_prop_types/2, State_, Body)
         end,

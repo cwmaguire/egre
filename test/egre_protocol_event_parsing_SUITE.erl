@@ -262,15 +262,15 @@ type_inference_andalso(_Config) ->
                        {{1, 2},
                         [{1, <<"Num1">>},
                          {2, <<"Atom1">>}],
-                        [{2, atom},
-                         {1, integer}]},
+                        [{1, integer},
+                         {2, atom}]},
 
                        %% Reaction event
                        {{1, 2},
                         [{1, <<"Num1">>},
                          {2, <<"Atom1">>}],
-                        [{2, atom},
-                         {1, integer}]}
+                        [{1, integer},
+                         {2, atom}]}
                       ]],
     ?assertEqual(ExpectedEvents, Events).
 
