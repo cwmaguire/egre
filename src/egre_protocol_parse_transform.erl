@@ -299,7 +299,7 @@ clause_scope_paths({clause, Head, MaybeGuards, Body}, ScopePaths) ->
             Disjunction = [L | _] when is_list(L) ->
                 Disjunction;
             Conjunction ->
-                _Disjunction = [Conjunction]
+                _Disjunction = [[Conjunction]]
         end,
 
     FlattenedGuards =
