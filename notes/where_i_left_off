@@ -2,6 +2,124 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2026-07-17   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+It seems like there's only one place in rules_char_buysell where the {1 buy 2 from 3 for 4} event is
+generated, so the types for 2 and 3 should be passed on to the succeed function that matches that
+event.
+
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  ░
+  ░ attempt:char_buysell {1 buy 2,  [_ pid]} ->                           1:Character, 2:Item
+  ░                        {1 buy 2 from 3 for 4,  [_ pid pid _]}         1:Character, 2:Item, 3:self(), 4:Cost
+  ░   succeed:char_buysell {1 buy 2 from 3 for 4,  [pid _ _ _]} ->        1:Self, 2:Item, 3:Seller, 4:Cost
+  ░                          {1 buy 2 from 3 for 4 with 5,  [_ _ _ _ _]}  1:Self, 2:Item, 3:Seller, 4:Cost, 5:Escrow
+  ░
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+  I think there's only one scope path to get from {1 buy 2} to {1 buy 2 from 3 for for}
+
+  {Character buy Item} has no indexed types: we can't infer what the types are
+
+  I think when an attempt kicks off another attempt, we need to store the reaction attempt event
+  type index, so that the succeed handler can pick it up.
+
+  By the time we get the reaction events, it seems we only know what the `self()` type is (pid), but
+  later on, in _chains, we know that Item is a pid too.
+
+  Pairs has it too:
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  ░
+  ░ {<<"char_buysell">>,attempt,
+  ░  {{1,buy,2},[{1,<<"Character">>},{2,<<"Item">>}],['_',pid]},
+  ░  {{1,buy,2,from,3,for,4},
+  ░   [{1,<<"Character">>},{2,<<"Item">>},{3,<<"self()">>},{4,<<"Cost">>}],
+  ░   ['_',pid,pid,'_']}}     <-- HERE
+  ░
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+    "normalizing" types is turning
+    {1, do, 2, with, 3} & [{1, pid}] into
+    {pid, '_', '_'}
+    i.e. we only know the type for the first variable/value
+
+  pairs is written out by _chains before anything else happens and after all the pairs are read from
+  the .bert files. So _pairs must generate them (which makes sense).
+
+  Weird, it looks like we don't know the Item type just before we write out the only reaction event:
+
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  ░
+  ░ ====================================
+  ░ Decide if we have reaction events
+  ░ ====================================
+  ░ Adding new action->reaction pairs
+  ░ Action Event: {{1,buy,2},[{1,<<"Character">>},{2,<<"Item">>}],[]}
+  ░ Reaction Events: [{{1,buy,2,from,3,for,4},
+  ░                    [{1,<<"Character">>},
+  ░                     {2,<<"Item">>},
+  ░                     {3,<<"self()">>},
+  ░                     {4,<<"Cost">>}],
+  ░                    [{3,pid}]}]       <-- where's {2, pid} ?
+  ░
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+  Nevermind, when I re-ran chains() I lost Item -> pid, so I think I had a stale _chains file. So, I
+  *used* to get {2,pid} for `Item`, but I lost it. I think I need to add more tests.
+
+  Ah, my tests aren't passing anymore. I should have been running them.
+
+In level_2_call_2_var_args, the op gets unwrapped: should be
+  [[{op,'==',{var,'W'},{integer,1}}]]
+but is
+   [{op,'==',{var,'W'},{integer,1}}]
+
+  Fixed.
+
+In level_1_decouple_dijunctions, I think the conjunctions are not in a disjunction:
+Should be:
+  [[{op,'==',{var,'A'},{integer,1}},{op,'==',{var,'B'},{integer,1}}]]
+but is
+   [{op,'==',{var,'A'},{integer,1}},{op,'==',{var,'B'},{integer,1}}]
+
+  Fixed. The previous fix wasn't in the write place. It's confusing because I use
+  flatten_guard_branches in two different places: function claues and case clauses.
+
+All parse transform tests are passing again. I'm not sure how I'd do this without tests.
+
+This is where I'm at now:
+
+  parsing_SUITE -> type_inference_andalso
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  ░
+  ░ === === Reason: {assertEqual,
+  ░                      [{module,egre_protocol_event_parsing_SUITE},
+  ░                       {line,275},
+  ░                       {expression,"Events"},
+  ░                       {expected,
+  ░                           [[<<"attack_resource">>,attempt,
+  ░                             {{1,2},
+  ░                              [{1,<<"Num1">>},{2,<<"Atom1">>}],
+  ░                              [{2,atom},{1,integer}]},
+  ░                             {{1,2},
+  ░                              [{1,<<"Num1">>},{2,<<"Atom1">>}],
+  ░                              [{2,atom},{1,integer}]}]]},
+  ░                       {value,
+  ░                           [[<<"attack_resource">>,attempt,
+  ░                             {{1,2},[{1,<<"Num1">>},{2,<<"Atom1">>}],[]},
+  ░                             {{1,2},[{1,<<"Num1">>},{2,<<"Atom1">>}],[]}]]}]}
+  ░   in function  egre_protocol_event_parsing_SUITE:type_inference_andalso/1 (test/egre_protocol_event_parsing_SUITE.erl:275)
+  ░
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+Okay, I *may* have solved the mistory of my disappearing types. I accidentally refactored the type
+map out of the #state{} record. I want to finish fixing the parsing_SUITE tests though. I need to
+run the rest of the tests to see what's failing, and then I should probably see if I'm missing tests
+... I probably don't have any CustomData or property type tests.
+
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2026-07-16   ┃
 ┗━━━━━━━━━━━━━━━━┛
 
