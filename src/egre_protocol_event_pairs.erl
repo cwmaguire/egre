@@ -61,7 +61,7 @@ write_events(Events = [[Module | _] | _]) ->
 
 get_event_pairs({_K, {clause, [{var, '_'}], _, _}}, Acc) ->
     Acc;
-get_event_pairs(ApiFun = {{Module, Function, ?API_FUNCTION_ARITY}, {clause, Arguments, [Conjunction], Body}},
+get_event_pairs(ApiFun = {{Module, Function, ?API_FUNCTION_ARITY}, {clause, Arguments, Conjunctions, Body}},
                 {Events, AttemptTypeIndexes, PropertyTypes})
   when Function == attempt;
        Function == succeed ->
@@ -73,14 +73,21 @@ get_event_pairs(ApiFun = {{Module, Function, ?API_FUNCTION_ARITY}, {clause, Argu
     io:format(user, "===================================================================================~n", []),
     io:format(user, "AttemptTypeIndexes: ~p~n", [AttemptTypeIndexes]),
     io:format(user, "Arguments: ~p~n", [Arguments]),
-    io:format(user, "Conjunction: ~p~n", [Conjunction]),
+    io:format(user, "Conjunctions: ~p~n", [Conjunctions]),
     io:format(user, "Body: ~n~p~n~n", [Body]),
 
     io:format(user, "Getting custom data types with PropertyTypes: ~p~n", [PropertyTypes]),
     TypeMap1 = ?ARGS:infer(Function, Arguments, PropertyTypes),
     io:format(user, "~nTypeMap after custom data type inference:~n~p~n", [TypeMap1]),
     % TypeMap1 = #{},
-    TypeMap2 = lists:foldl(fun ?GUARDS:infer/2, TypeMap1, Conjunction),
+    TypeMap2 =
+        case Conjunctions of
+            [Conjunction] ->
+                lists:foldl(fun ?GUARDS:infer/2, TypeMap1, Conjunction);
+            [] ->
+                #{}
+        end,
+
 
     io:format(user, "~nTypeMap after conjunction type inference:~n~p~n", [TypeMap2]),
 
