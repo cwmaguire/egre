@@ -48,15 +48,17 @@ find_prop_types({'case', Expression, [Clause = {clause, _, _, _}]}, State) ->
     State1 = find_prop_types(Expression, State),
     find_prop_types(Clause, State1);
 find_prop_types({clause,
-                 Expression,
-                 Guards,
+                 _Expression,
+                 _Guards,
                  Body},
                 State) ->
     lists:foldl(fun find_prop_types/2, State, Body);
-find_prop_types({op, 'orelse', Expression1, Expression2}, State) ->
+%% TODO Why aren't we using Expression2?
+find_prop_types({op, 'orelse', Expression1, _Expression2}, State) ->
     State1 = find_prop_types(Expression1, State),
     find_prop_types(Expression1, State1);
-find_prop_types({op, 'andalso', Expression1, Expression2}, State) ->
+%% TODO Why aren't we using Expression2?
+find_prop_types({op, 'andalso', Expression1, _Expression2}, State) ->
     State1 = find_prop_types(Expression1, State),
     find_prop_types(Expression1, State1);
 find_prop_types({call,
