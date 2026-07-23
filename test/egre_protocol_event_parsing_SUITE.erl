@@ -22,24 +22,24 @@
 -export([type_inference_event_plus/1]).
 -export([type_inference_andalso/1]).
 
-% all() ->
-%     [no_events,
-%      terminal_event,
-%      action_reaction,
-%      resend_raw_event,
-%      resend_variable_event,
-%      modify_raw_event,
-%      broadcast_raw_event,
-%      type_inference_self,
-%      type_inference_is_pid,
-%      type_inference_is_binary,
-%      type_inference_equals,
-%      type_inference_plus,
-%      type_inference_event_plus,
-%      type_inference_recursive].
-
 all() ->
-    [type_inference_andalso].
+    [no_events,
+     terminal_event,
+     action_reaction,
+     resend_raw_event,
+     resend_variable_event,
+     modify_raw_event,
+     broadcast_raw_event,
+     type_inference_self,
+     type_inference_is_pid,
+     type_inference_is_binary,
+     type_inference_equals,
+     type_inference_plus,
+     type_inference_event_plus,
+     type_inference_recursive].
+
+% all() ->
+%     [type_inference_self].
 
 no_events(_Config) ->
     Events = egre_protocol_event_pairs:get_events(?NO_EVENTS),
@@ -120,7 +120,7 @@ type_inference_self(_Config) ->
                        %% Action event
                        {{1, abc, 2, def, 3},
                         [{1, <<"Pid1">>}, {2, <<"Pid2">>}, {3, <<"NotPid">>}],
-                        [{2, pid}, {1, pid}]},
+                        [{1, pid}, {2, pid}]},
 
                        %% Reaction event
                        {{1, ghi, 2, 3},
@@ -175,11 +175,11 @@ type_inference_equals(_Config) ->
                          {3, <<"Float1">>},
                          {4, <<"Char1">>},
                          {5, <<"EmptyList1">>}],
-                        [{5, list},
-                         {4, char},
-                         {3, float},
+                        [{1, atom},
                          {2, integer},
-                         {1, atom}]},
+                         {3, float},
+                         {4, char},
+                         {5, list}]},
 
                        %% Reaction event
                        {{1, 2, 3, 4, 5},
@@ -188,11 +188,11 @@ type_inference_equals(_Config) ->
                          {3, <<"Float2">>},
                          {4, <<"Char2">>},
                          {5, <<"EmptyList2">>}],
-                        [{5, list},
-                         {4, char},
-                         {3, float},
+                        [{1, atom},
                          {2, integer},
-                         {1, atom}]}
+                         {3, float},
+                         {4, char},
+                         {5, list}]}
                       ]],
     ?assertEqual(ExpectedEvents, Events).
 
@@ -205,8 +205,8 @@ type_inference_plus(_Config) ->
                        {{1, 2},
                         [{1, <<"Num1">>},
                          {2, <<"Num2">>}],
-                        [{2, integer},
-                         {1, integer}]},
+                        [{1, integer},
+                         {2, integer}]},
 
                        %% Reaction event
                        {{1},
@@ -241,15 +241,15 @@ type_inference_recursive(_Config) ->
                        {{1, 2},
                         [{1, <<"Num1">>},
                          {2, <<"Num2">>}],
-                        [{2, integer},
-                         {1, integer}]},
+                        [{1, integer},
+                         {2, integer}]},
 
                        %% Reaction event
                        {{1, 2},
                         [{1, <<"Num1">>},
                          {2, <<"Num2">>}],
-                        [{2, integer},
-                         {1, integer}]}
+                        [{1, integer},
+                         {2, integer}]}
                       ]],
     ?assertEqual(ExpectedEvents, Events).
 
