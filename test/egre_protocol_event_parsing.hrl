@@ -351,3 +351,28 @@
                 [{atom,broadcast},
                  {tuple, [{var, 'Num1'}, {var, 'Atom1'}]}]}
               }]}]}}]).
+
+-define(TYPE_INFERENCE_PROP_MATCH,
+        [{{<<"attack_resource">>,attempt,1},
+          {clause,
+           [{tuple,
+             [{var, '_Map'},
+              {var,'Props'},
+              {tuple,
+               [{var, 'Num1'},
+                {var, 'Atom1'}]},
+              {var,'_Context'}]}],
+           [],
+           [{match,
+             {var,'Owner'},
+             {call,
+              {remote,{atom,proplists},{atom,get_value}},
+              [{atom,owner},
+               {var,'Props'}]}},
+            {record, result,
+             [{record_field,
+               {atom,result},
+               {tuple,
+                [{atom,broadcast},
+                 {tuple, [{var, 'Owner'}, {var, 'Atom1'}]}]}
+              }]}]}}]).
