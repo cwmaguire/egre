@@ -2,6 +2,95 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2026-07-25   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+TODO:
+- test that if we have multiple Props vars, they all get listed
+- test that a case expression with an andalso gets handled
+  - not an andalso in the _guard_, in the _expression_ itself
+
+    e.g. case IsThisTrue andalso IsThatTrue of
+             true ->
+	         do_something()
+         end
+
+With egre_protocol_props_inference we've determined (in _pairs) that we've matched the Props var of
+the event and now we're going through every expression in the body checking if we assign props to
+another variable or pull typed properties out of one of the Props variables.
+
+Did I split orelse operators in case expressions?
+
+  I think so. I should make sure there's a test for it.
+
+  There's now a test for it: case_expression_orelse
+
+I don't think we can ever run into an `orelse` expresion in pairs ... unless maybe it's in a raw
+match. No, because that can only return a boolean. Oh, but the expressions in the left and right
+expressions ... couldn't have different scope paths:
+  
+  A = expr1 orelse expr2
+
+    A can't be two different things, so nothing from this expression can effect the scope.
+    That is, no lines of code after this expression can have different values for A based on
+    anything that heppened in expr1 or expr2.
+
+  Also, while evaluating expr1 and expr2, nothing in either of the branches can affect the other.
+
+  A = true_if_owner_is_pid(Owner) orelse true_if_owner_is_integer(Owner)
+
+    THere's no way we can infer the type of `A` or `Owner` from this code.
+
+    Hmm, actually we can: if the left branch only succeeds if Owner is a pid, then from here on we
+    can assume that Owner is a pid, so this is a separate scope path.
+
+    However, I'm not sure if I do this in rules yet. I'm not covering every possible case, I'm only
+    covering cases that I've actually used in my egre_mud_1 rules code. I'm not going for a general
+    solution for all code, though I may eventually get there.
+
+┏━━━━━━━━━━━━━━━━┓
+┃   2026-07-23   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+Fixed some tests: just minor data structure issues.
+
+I broke out egre_protocol_event_pairs.erl into several files. What features have I added that I need
+to test?
+
+Here's what I'm testing so far:
+  - no_events                 - just return {return, ok}
+  - terminal_event            - noothing in the body so no reaction event
+  - action_reaction           - two calls to egre:attempt/2 means two reactions
+  - resend_raw_event          - resent an tuple event
+  - resend_variable_event     - store event in var then resend it
+  - modify_raw_event          - send back the incoming event but modified
+  - broadcast_raw_event       - broadcast an event not stored in a var
+  - type_inference_self       - track that Pid1 is a pid coming in and going out because of guard
+  - type_inference_is_pid     - track that Pid1 is a pid coming and going because of is_pid guard
+  - type_inference_is_binary  - track that TargetName is binary in and out because of is_binary guard
+  - type_inference_equals     - track var types across var assignments because of == <literal> guard
+  - type_inference_plus       - C = A + B - all three are ints
+  - type_inference_event_plus - event field is integer expression
+  - type_inference_recursive  - conjunction of two `X == <literal>` type inferences
+
+What have I added recently?
+  - props inference
+    - if we're getting a property out of a known Props var, and we know the type, track it
+      e.g. Owner = proplists:get_value(owner, Props)
+      if Props stores object properties, and we know the property `owner` is of type pid, then
+      we know that `Owner` must be a pid.
+
+      Do this in:
+      - case expressions
+      - case clause body
+      - match expression
+        - with andalso
+	- with orelse
+      
+      using:
+      - egre_object:has_pid(Props, Pid)
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2026-07-17   ┃
 ┗━━━━━━━━━━━━━━━━┛
 
