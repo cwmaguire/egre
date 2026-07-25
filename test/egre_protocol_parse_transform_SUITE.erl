@@ -29,6 +29,7 @@
 -export([case_2_clauses_with_2_guards_each/1]).
 -export([case_nested/1]).
 -export([case_expression_is_nested_case/1]).
+-export([case_expression_orelse/1]).
 
 all() ->
     [level_1_call_no_args,
@@ -49,17 +50,10 @@ all() ->
      case_2_guards_2_clauses,
      case_2_clauses_with_2_guards_each,
      case_nested,
-     case_expression_is_nested_case].
+     case_expression_is_nested_case,
+     case_expression_orelse].
 
-% all() -> [level_1_decouple_disjunctions, decouple_orelse].
-
-% all() -> [decouple_andalso_andalso_orelse].
-% all() -> [decouple_andalso_orelse].
-% all() -> [decouple_orelse].
-% all() -> [level_1_call_no_args].
-% all() -> [case_2_clauses_with_2_guards_each].
-
-% all() -> [level_1_decouple_disjunctions].
+% all() -> [case_expression_orelse].
 
 init_per_suite(Config) ->
 
@@ -109,6 +103,7 @@ case_2_guards_2_clauses(Config) -> test(?FUNCTION_NAME, Config).
 case_2_clauses_with_2_guards_each(Config) -> test(?FUNCTION_NAME, Config).
 case_nested(Config) -> test(?FUNCTION_NAME, Config).
 case_expression_is_nested_case(Config) -> test(?FUNCTION_NAME, Config).
+case_expression_orelse(Config) -> test(?FUNCTION_NAME, Config).
 
 test(FileName = FunctionName, Config) ->
     compare(FunctionName, compile(FileName, Config)).
