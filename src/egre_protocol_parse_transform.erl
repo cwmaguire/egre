@@ -9,8 +9,8 @@
 %% is_owner/2 and describe/4 are not being inlined
 
 parse_transform(Forms, _Options) ->
-    _InlinedApiFunctions = inline_flatten(Forms),
-    %% pairs(Forms, InlinedApiFunctions),
+    InlinedApiFunctions = inline_flatten(Forms),
+    pairs(Forms, InlinedApiFunctions),
     Forms.
 
 pairs(Forms, Functions) ->
