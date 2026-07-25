@@ -22,25 +22,27 @@
 -export([type_inference_event_plus/1]).
 -export([type_inference_andalso/1]).
 -export([type_inference_prop_match/1]).
-
-% all() ->
-%     [no_events,
-%      terminal_event,
-%      action_reaction,
-%      resend_raw_event,
-%      resend_variable_event,
-%      modify_raw_event,
-%      broadcast_raw_event,
-%      type_inference_self,
-%      type_inference_is_pid,
-%      type_inference_is_binary,
-%      type_inference_equals,
-%      type_inference_plus,
-%      type_inference_event_plus,
-%      type_inference_recursive].
+-export([type_inference_egre_object_has_pid/1]).
 
 all() ->
-    [type_inference_prop_match].
+    [no_events,
+     terminal_event,
+     action_reaction,
+     resend_raw_event,
+     resend_variable_event,
+     modify_raw_event,
+     broadcast_raw_event,
+     type_inference_self,
+     type_inference_is_pid,
+     type_inference_is_binary,
+     type_inference_equals,
+     type_inference_plus,
+     type_inference_event_plus,
+     type_inference_recursive,
+     type_inference_egre_object_has_pid].
+
+% all() ->
+%     [type_inference_prop_match].
 
 no_events(_Config) ->
     Events = egre_protocol_event_pairs:get_events(?NO_EVENTS),
@@ -290,6 +292,28 @@ type_inference_prop_match(_Config) ->
                        {{1, 2},
                         [{1, <<"Owner">>},
                          {2, <<"Atom1">>}],
+                        [{1, pid}]}
+                      ]],
+    ?assertEqual(ExpectedEvents, Events).
+
+type_inference_egre_object_has_pid(_Config) ->
+    Events = egre_protocol_event_pairs:get_events(?TYPE_INFERENCE_EGRE_OBJECT_HAS_PID,
+                                                  #{owner => pid}),
+    ExpectedEvents = [[<<"char_inv">>,
+                       attempt,
+
+                       %% Action event
+                       {{1, 2, 3},
+                        [{1, <<"Self">>},
+                         {2, <<"Action">>},
+                         {3, <<"Item">>}],
+                        [{3, pid}]},
+
+                       %% Reaction event
+                       {{1, move, from, 2, to, 3},
+                        [{1, <<"Item">>},
+                         {2, <<"Source">>},
+                         {3, <<"Target">>}],
                         [{1, pid}]}
                       ]],
     ?assertEqual(ExpectedEvents, Events).
