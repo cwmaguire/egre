@@ -33,6 +33,7 @@ find_prop_types({match, {var, Var}, Forms}, State = #state{}) ->
     MaybePropType = maybe_property_type(Forms, State),
     case {IsPropsValue, MaybePropType} of
         {true, _} ->
+            %% XXX should this be a cons onto the existing props?
             State1#state{props = [_NewPropsVar = Var, State1#state.props]};
         {_, undefined} ->
             State1;
