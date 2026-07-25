@@ -39,6 +39,7 @@ all() ->
      type_inference_plus,
      type_inference_event_plus,
      type_inference_recursive,
+     type_inference_prop_match,
      type_inference_egre_object_has_pid].
 
 % all() ->
