@@ -91,12 +91,6 @@ val(Key, Obj) ->
             []
     end.
 
-all(Key, Obj) ->
-    proplists:get_all_values(Key, get_props(Obj)).
-
-has(Val, Obj) ->
-    false /= lists:keyfind(Val, 2, get_props(Obj)).
-
 get_props(undefined) ->
     [];
 get_props(Obj) when is_atom(Obj) ->
