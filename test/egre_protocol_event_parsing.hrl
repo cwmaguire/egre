@@ -352,7 +352,7 @@
                  {tuple, [{var, 'Num1'}, {var, 'Atom1'}]}]}
               }]}]}}]).
 
--define(TYPE_INFERENCE_PROP_MATCH,
+-define(PROPS_INFERENCE_MATCH,
         [{{<<"attack_resource">>,attempt,1},
           {clause,
            [{tuple,
@@ -378,7 +378,7 @@
               }]}]}}]).
 
 
--define(TYPE_INFERENCE_EGRE_OBJECT_HAS_PID,
+-define(PROPS_INFERENCE_EGRE_OBJECT_HAS_PID,
         [{{<<"char_inv">>,attempt,1},
          {clause,
           [{tuple,
@@ -407,3 +407,29 @@
                  {record_field,{atom,subscribe},{atom,true}},
                  {record_field,{atom,props},{var,'Props'}},
                  {record_field,{atom,log},{var,'Log'}}]}]}]}]}}]).
+
+-define(PROPS_INFERENCE_NEW_VAR,
+        [{{<<"attack_resource">>,attempt,1},
+          {clause,
+           [{tuple,
+             [{var, '_Map'},
+              {var,'Props'},
+              {tuple,
+               [{var, 'Num1'},
+                {var, 'Atom1'}]},
+              {var,'_Context'}]}],
+           [],
+           [{match, {var, 'Props2'}, {var, 'Props'}},
+            {match,
+             {var,'Owner'},
+             {call,
+              {remote,{atom,proplists},{atom,get_value}},
+              [{atom,owner},
+               {var,'Props2'}]}},
+            {record, result,
+             [{record_field,
+               {atom,result},
+               {tuple,
+                [{atom,broadcast},
+                 {tuple, [{var, 'Owner'}, {var, 'Atom1'}]}]}
+              }]}]}}]).

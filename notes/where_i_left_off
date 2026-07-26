@@ -2,6 +2,34 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2026-07-26   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+Removed this from event_parseing_SUITE
+
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  ░
+  ░ % - parent 1
+  ░ %   - child 1 / parent 2
+  ░ %     - child 2
+  ░ 
+  ░ % What do we need to write in the BERT file to make chains:
+  ░ % - module
+  ░ % - event type (attempt / succeed)
+  ░ % - event tuple (e.g. {foo, 1, baz, 2})
+  ░ % - indexed variables (e.g. [{1, <<"Bar">>}, {2, <<"Quux">>}])
+  ░ % - type inference
+  ░ 
+  ░ % {attack, <<"bob">>}         -> {attack, <0.1.0>}
+  ░ % {attack, 1}, [{1, binary}]  -> {attack, 1}, [{1, pid}]
+  ░
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+Changing type inference tests to `props_inference_...`
+
+I need to test that new Props vars are captured, e.g. Props2 = Props1
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2026-07-25   ┃
 ┗━━━━━━━━━━━━━━━━┛
 

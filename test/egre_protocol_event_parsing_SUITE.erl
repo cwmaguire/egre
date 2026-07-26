@@ -21,8 +21,9 @@
 -export([type_inference_recursive/1]).
 -export([type_inference_event_plus/1]).
 -export([type_inference_andalso/1]).
--export([type_inference_prop_match/1]).
--export([type_inference_egre_object_has_pid/1]).
+-export([props_inference_match/1]).
+-export([props_inference_egre_object_has_pid/1]).
+-export([props_inference_new_var/1]).
 
 all() ->
     [no_events,
@@ -39,8 +40,9 @@ all() ->
      type_inference_plus,
      type_inference_event_plus,
      type_inference_recursive,
-     type_inference_prop_match,
-     type_inference_egre_object_has_pid].
+     props_inference_match,
+     props_inference_egre_object_has_pid,
+     props_inference_new_var].
 
 % all() ->
 %     [type_inference_prop_match].
@@ -278,8 +280,8 @@ type_inference_andalso(_Config) ->
                       ]],
     ?assertEqual(ExpectedEvents, Events).
 
-type_inference_prop_match(_Config) ->
-    Events = egre_protocol_event_pairs:get_events(?TYPE_INFERENCE_PROP_MATCH, #{owner => pid}),
+props_inference_match(_Config) ->
+    Events = egre_protocol_event_pairs:get_events(?PROPS_INFERENCE_MATCH, #{owner => pid}),
     ExpectedEvents = [[<<"attack_resource">>,
                        attempt,
 
@@ -297,8 +299,8 @@ type_inference_prop_match(_Config) ->
                       ]],
     ?assertEqual(ExpectedEvents, Events).
 
-type_inference_egre_object_has_pid(_Config) ->
-    Events = egre_protocol_event_pairs:get_events(?TYPE_INFERENCE_EGRE_OBJECT_HAS_PID,
+props_inference_egre_object_has_pid(_Config) ->
+    Events = egre_protocol_event_pairs:get_events(?PROPS_INFERENCE_EGRE_OBJECT_HAS_PID,
                                                   #{owner => pid}),
     ExpectedEvents = [[<<"char_inv">>,
                        attempt,
@@ -320,17 +322,21 @@ type_inference_egre_object_has_pid(_Config) ->
     ?assertEqual(ExpectedEvents, Events).
 
 
+props_inference_new_var(_Config) ->
+    Events = egre_protocol_event_pairs:get_events(?PROPS_INFERENCE_NEW_VAR, #{owner => pid}),
+    ExpectedEvents = [[<<"attack_resource">>,
+                       attempt,
 
-% - parent 1
-%   - child 1 / parent 2
-%     - child 2
+                       %% Action event
+                       {{1, 2},
+                        [{1, <<"Num1">>},
+                         {2, <<"Atom1">>}],
+                        []},
 
-% What do we need to write in the BERT file to make chains:
-% - module
-% - event type (attempt / succeed)
-% - event tuple (e.g. {foo, 1, baz, 2})
-% - indexed variables (e.g. [{1, <<"Bar">>}, {2, <<"Quux">>}])
-% - type inference
-
-% {attack, <<"bob">>}         -> {attack, <0.1.0>}
-% {attack, 1}, [{1, binary}]  -> {attack, 1}, [{1, pid}]
+                       %% Reaction event
+                       {{1, 2},
+                        [{1, <<"Owner">>},
+                         {2, <<"Atom1">>}],
+                        [{1, pid}]}
+                      ]],
+    ?assertEqual(ExpectedEvents, Events).

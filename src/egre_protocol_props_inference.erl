@@ -34,7 +34,7 @@ find_prop_types({match, {var, Var}, Forms}, State = #state{}) ->
     case {IsPropsValue, MaybePropType} of
         {true, _} ->
             %% XXX should this be a cons onto the existing props?
-            State1#state{props = [_NewPropsVar = Var, State1#state.props]};
+            State1#state{props = [_NewPropsVar = Var | State1#state.props]};
         {_, undefined} ->
             State1;
         {_, Type} ->
@@ -86,6 +86,8 @@ find_prop_types(_Form, State) ->
 %% variable holding properties. We need to monitor it for property types.
 %% e.g. if we pull 'a' out, then we know 'a' is an integer property. If we use a in a reaction event,
 %% then we know that event has an integer
+does_return_properties({var, Var}, Props) ->
+    lists:member(Var, Props);
 does_return_properties(_Forms, _Props) ->
     false.
 
