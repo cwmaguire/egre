@@ -2,6 +2,10 @@
 
 -export([chains/0]).
 
+-ifdef(TEST).
+-export([make_chains/1]).
+-endif.
+
 -define(INDENT, "  ").
 -define(INFINITE_LOOP, [_Tail = {_Mod, _Fun, _ActionEvent = {E, _, Ts}, _ReactionEvent = {E, _, Ts}} | _]).
 -define(DEAD_END, [{_, _, _, undefined} | _]).
@@ -11,12 +15,15 @@ chains() ->
     io:format(user, "# of Pairs0 = ~p~n", [length(Pairs0)]),
     Pairs = normalize_types(Pairs0),
     write_pairs(Pairs),
+    Chains = make_chains(Pairs),
+    io:format(user, "# of Chains = ~p~n", [length(Chains)]),
+    print_chains(Chains).
+
+make_chains(Pairs) ->
     ChainHeads = chain_heads(Pairs),
     io:format(user, "# of ChainHeads = ~p~n", [length(ChainHeads)]),
     %io:format(user, "ChainHeads = ~p~n", [ChainHeads]),
-    Chains = chains_(ChainHeads, _DeadChains = [], sets:new(), Pairs),
-    io:format(user, "# of Chains = ~p~n", [length(Chains)]),
-    print_chains(Chains).
+    chains_(ChainHeads, _DeadChains = [], sets:new(), Pairs).
 
 chain_heads(Data) ->
     ReactionEvents = [{E, Types} || {_, _, _, {E, _, Types}} <- Data],
