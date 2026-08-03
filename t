@@ -2,7 +2,14 @@
 
 rm -rf logs/
 
-rm test/level_*.beam
+# create array, check if 1st element is a file
+# if test/level_*.beam doesn't match anything the first element
+# of the array will be the string "test/level_*.beam"; i.e. the shell
+# won't expand the value if no files match
+files=(test/level_*.beam)
+if [[ -e ${files[0]} ]]; then
+  rm test/level_*.beam
+fi
 
 touch src/*
 touch test/*
