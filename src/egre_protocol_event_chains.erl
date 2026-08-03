@@ -4,6 +4,7 @@
 
 -ifdef(TEST).
 -export([make_chains/1]).
+-export([chain_heads/1]).
 -endif.
 
 -define(INDENT, "  ").
@@ -25,10 +26,16 @@ make_chains(Pairs) ->
     %io:format(user, "ChainHeads = ~p~n", [ChainHeads]),
     chains_(ChainHeads, _DeadChains = [], sets:new(), Pairs).
 
-chain_heads(Data) ->
-    ReactionEvents = [{E, Types} || {_, _, _, {E, _, Types}} <- Data],
-    [[Pair] || Pair = {_, _, {E, _, Types}, {_, _, _}} <- Data,
-               not lists:member({E, Types}, ReactionEvents)].
+chain_heads(Pairs) ->
+    % ReactionEvents = [{E, Types} || {_, _, _, {E, _, Types}} <- Pairs],
+    ReactionEvents = [R || {_, _, _, R} <- Pairs],
+    [[Pair] || Pair = {_, _, A, R} <- Pairs,
+               not lists:any(fun(R_) when R /= R_->
+                                 are_events_type_compatible(R_, A);
+                                (_) ->
+                                    false
+                             end,
+                             ReactionEvents)].
 
 read_pairs() ->
     filelib:fold_files("events", ~S".*\.bert$", false, fun read_file/2, _Data = []).
@@ -105,18 +112,25 @@ chains_([CurrChain | LiveChains], DeadChains, Set, AllPairs) ->
             chains_(NewChains ++ LiveChains, DeadChains, Set, AllPairs)
     end.
 
+is_pair_match(_, Same, Same) ->
+    false;
 is_pair_match(PrevPairs, Curr, MaybeNext) ->
-    EqualsNext = fun(PrevPair) -> is_pair_equal(PrevPair, MaybeNext) end,
-    not lists:any(EqualsNext, PrevPairs)
+    would_not_loop(PrevPairs, MaybeNext)
     andalso
     is_pair_match(Curr, MaybeNext).
 
-is_pair_equal({_, _, A1, R1}, {_, _, A2, R2}) ->
-    are_events_equal(A1, A2) andalso are_events_equal(R1, R2).
+would_not_loop(PrevPairs, MaybeNext) ->
+    IsCompatible = fun(PrevPair) ->
+                       is_pair_compatible(PrevPair, MaybeNext)
+                   end,
+    not lists:any(IsCompatible, PrevPairs).
 
-are_events_equal({E, _, Types1}, {E, _, Types2}) ->
+is_pair_compatible({_, _, A1, R1}, {_, _, A2, R2}) ->
+    are_events_type_compatible(A1, A2) andalso are_events_type_compatible(R1, R2).
+
+are_events_type_compatible({E, _, Types1}, {E, _, Types2}) ->
     is_type_match(Types1, Types2);
-are_events_equal(_, _) ->
+are_events_type_compatible(_, _) ->
     false.
 
 is_pair_match(Pair1, Pair2) ->

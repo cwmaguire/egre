@@ -2,6 +2,27 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2026-08-02   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+When we form chain heads we need to allow for chains that only match themselves so that we can catch
+chains that only have one event and no reaction. This is exactly the kind of thing I'd want to know
+about: events that can't trigger anything.
+
+┏━━━━━━━━━━━━━━━━┓
+┃   2026-07-28   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+I'm starting to test _chains. I don't have any concept of type matching in _chains. For
+chain_heads/1, any pair is a chain head if it's action event and action types don't *exactly* match
+any reaction.
+
+  How am I getting *TWO* pairs back from chain_heads/1 when I'm only sending one in?
+
+  lol, I'm just dumb. I wasn't calling chain_heads/1, I was calling make_chains/1 because of
+  copypasta.
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2026-07-26   ┃
 ┗━━━━━━━━━━━━━━━━┛
 
@@ -28,6 +49,33 @@ Removed this from event_parseing_SUITE
 Changing type inference tests to `props_inference_...`
 
 I need to test that new Props vars are captured, e.g. Props2 = Props1
+
+  Tested a simple case.
+
+I think it's time to go back and start surveying the rules modules and eyeballing whether or not
+we're inferring all the types.
+
+  Okay, I compiled everything (except rules_room_inject_self?) and ran chains/0 again.
+  I'm looking at rules_body_part_cleanup.
+
+  There's a cycle; I'm not sure how we break out of it.
+
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  ░
+  ░ attempt:body_part_cleanup {1 cleanup body_parts 2 in 3,  [_ _ _]} ->                  1:Character, 2:BodyParts, 3:Room
+  ░                             {1 cleanup body_parts 2 in 3,  [_ list _]}                  1:Character, 2:[Self | BodyParts], 3:Room
+  ░   attempt:body_part_cleanup {1 cleanup body_parts 2 in 3,  [_ _ _]} ->                  1:Character, 2:BodyParts, 3:Room
+  ░                               {1 cleanup body_parts 2 in 3,  [_ list _]}                  1:Character, 2:[Self | BodyParts], 3:Room
+  ░
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+  Huh, I don't think I can avoid the cycle purely with type inference. There isn't a type difference
+  between the event and the reaction: they're both lists. self() is being added to the list.
+
+  So, I guess I have to figure out how I break out of it.
+
+  It looks like in _chains, in is_pair_match, I should be preventing the cycle from happening.
+  Looks like I need a test.
 
 ┏━━━━━━━━━━━━━━━━┓
 ┃   2026-07-25   ┃
