@@ -7,16 +7,40 @@
 
 -export([single_chain_head/1]).
 -export([no_cycles/1]).
+-export([two_pair_chain/1]).
+-export([pairs_match/1]).
+-export([only_one_chain_head/1]).
 
+-define(CHAINS, egre_protocol_event_chains).
 
 all() ->
     [single_chain_head,
-     no_cycles].
+     no_cycles,
+     two_pair_chain,
+     pairs_match,
+     only_one_chain_head].
 
 single_chain_head(_Config) ->
-    ChainHeads = egre_protocol_event_chains:chain_heads(?SINGLE_PAIR),
+    ChainHeads = ?CHAINS:chain_heads(?SINGLE_PAIR),
     ?assertEqual([?SINGLE_PAIR], ChainHeads).
 
 no_cycles(_Config) ->
-    Chains = egre_protocol_event_chains:make_chains(?NO_CYCLES),
+    Chains = ?CHAINS:make_chains(?NO_CYCLES),
     ?assertEqual([?NO_CYCLES], Chains).
+
+%% two pair chain
+two_pair_chain(_Config) ->
+    Chains = ?CHAINS:make_chains(?TWO_PAIR_CHAIN),
+    ?assertEqual([?TWO_PAIR_CHAIN], Chains).
+
+pairs_match(_Config) ->
+    [P1, P2] = ?TWO_PAIR_CHAIN,
+    ?assert(?CHAINS:is_pair_match([], P1, P2)).
+
+only_one_chain_head(_Config) ->
+    [P1, _] = ?TWO_PAIR_CHAIN,
+    ChainHeads = (?CHAINS:chain_heads(?TWO_PAIR_CHAIN)),
+    ?assertEqual([[P1]], ChainHeads).
+
+%% two pair chain that's a cycle: a->b,b->a
+%% We need to know it exists, but have it stop

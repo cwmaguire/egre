@@ -2,6 +2,13 @@ Where I Left Off - EGRE
 I need a place to track where I am for when I take long breaks.
 
 ┏━━━━━━━━━━━━━━━━┓
+┃   2026-08-04   ┃
+┗━━━━━━━━━━━━━━━━┛
+
+I think we need a->b,b->a as a chain, but no farther: we need to detect a cycle, but not cycle
+infinitely. Instead of not looping, we need to end once we have a loop.
+
+┏━━━━━━━━━━━━━━━━┓
 ┃   2026-08-02   ┃
 ┗━━━━━━━━━━━━━━━━┛
 

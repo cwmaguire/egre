@@ -5,6 +5,8 @@
 -ifdef(TEST).
 -export([make_chains/1]).
 -export([chain_heads/1]).
+-export([is_pair_match/3]).
+-export([chain_heads/1]).
 -endif.
 
 -define(INDENT, "  ").
