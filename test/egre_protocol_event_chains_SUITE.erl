@@ -12,6 +12,8 @@
 -export([three_pair_chain/1]).
 -export([no_loop/1]).
 -export([two_chains/1]).
+-export([incompatible_pairs_atoms/1]).
+-export([incompatible_pairs_types/1]).
 -export([pairs_match/1]).
 -export([only_one_chain_head/1]).
 
@@ -25,6 +27,8 @@ all() ->
      three_pair_chain,
      no_loop,
      two_chains,
+     incompatible_pairs_atoms,
+     incompatible_pairs_types,
      pairs_match,
      only_one_chain_head].
 
@@ -56,6 +60,16 @@ two_chains(_Config) ->
     [ChainOne, ChainTwo] = ?CHAINS:make_chains(?TWO_CHAINS),
     ?assertEqual(?TWO_CHAINS_ONE, ChainOne),
     ?assertEqual(?TWO_CHAINS_TWO, ChainTwo).
+
+incompatible_pairs_atoms(_Config) ->
+    [PairOne, PairTwo] = ?INCOMPATIBLE_PAIRS_ATOM,
+    Chains = ?CHAINS:make_chains(?INCOMPATIBLE_PAIRS_ATOM),
+    ?assertEqual([[PairOne], [PairTwo]], Chains).
+
+incompatible_pairs_types(_Config) ->
+    [PairOne, PairTwo] = ?INCOMPATIBLE_PAIRS_TYPE,
+    Chains = ?CHAINS:make_chains(?INCOMPATIBLE_PAIRS_TYPE),
+    ?assertEqual([[PairOne], [PairTwo]], Chains).
 
 pairs_match(_Config) ->
     [P1, P2] = ?TWO_PAIR_CHAIN,
