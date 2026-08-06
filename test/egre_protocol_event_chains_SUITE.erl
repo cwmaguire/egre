@@ -8,6 +8,9 @@
 -export([single_chain_head/1]).
 -export([no_cycles/1]).
 -export([two_pair_chain/1]).
+-export([three_pair_chain/1]).
+-export([no_loop/1]).
+-export([two_chains/1]).
 -export([pairs_match/1]).
 -export([only_one_chain_head/1]).
 
@@ -17,6 +20,9 @@ all() ->
     [single_chain_head,
      no_cycles,
      two_pair_chain,
+     three_pair_chain,
+     no_loop,
+     two_chains,
      pairs_match,
      only_one_chain_head].
 
@@ -32,6 +38,19 @@ no_cycles(_Config) ->
 two_pair_chain(_Config) ->
     Chains = ?CHAINS:make_chains(?TWO_PAIR_CHAIN),
     ?assertEqual([?TWO_PAIR_CHAIN], Chains).
+
+three_pair_chain(_Config) ->
+    Chains = ?CHAINS:make_chains(?THREE_PAIR_CHAIN),
+    ?assertEqual([?THREE_PAIR_CHAIN], Chains).
+
+no_loop(_Config) ->
+    Chains = ?CHAINS:make_chains(?LOOP_CHAIN),
+    ?assertEqual([?LOOP_CHAIN], Chains).
+
+two_chains(_Config) ->
+    [ChainOne, ChainTwo] = ?CHAINS:make_chains(?TWO_CHAINS),
+    ?assertEqual(?TWO_CHAINS_ONE, ChainOne),
+    ?assertEqual(?TWO_CHAINS_TWO, ChainTwo).
 
 pairs_match(_Config) ->
     [P1, P2] = ?TWO_PAIR_CHAIN,
