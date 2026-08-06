@@ -7,6 +7,7 @@
 
 -export([single_chain_head/1]).
 -export([no_cycles/1]).
+-export([one_pair_chain/1]).
 -export([two_pair_chain/1]).
 -export([three_pair_chain/1]).
 -export([no_loop/1]).
@@ -19,6 +20,7 @@
 all() ->
     [single_chain_head,
      no_cycles,
+     one_pair_chain,
      two_pair_chain,
      three_pair_chain,
      no_loop,
@@ -34,7 +36,10 @@ no_cycles(_Config) ->
     Chains = ?CHAINS:make_chains(?NO_CYCLES),
     ?assertEqual([?NO_CYCLES], Chains).
 
-%% two pair chain
+one_pair_chain(_Config) ->
+    Chains = ?CHAINS:make_chains(?SINGLE_PAIR),
+    ?assertEqual([?SINGLE_PAIR], Chains).
+
 two_pair_chain(_Config) ->
     Chains = ?CHAINS:make_chains(?TWO_PAIR_CHAIN),
     ?assertEqual([?TWO_PAIR_CHAIN], Chains).
